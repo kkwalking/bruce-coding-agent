@@ -1,0 +1,59 @@
+package com.brucecli.llm;
+
+import java.util.List;
+
+/**
+ * Chat Completion API 的 message 结构。
+ *
+ * <p>四类消息的作用：
+ * system: 给模型设定角色和规则；
+ * user: 用户输入；
+ * assistant: 模型回复，可能附带 tool_calls；
+ * tool: 工具执行结果，需要通过 toolCallId 关联回某一次工具调用。</p>
+ */
+public record Message(String role, String content, List<ToolCall> toolCalls, String toolCallId) {
+    public Message {
+        // record 默认只是保存引用，这里复制一份，避免外部修改历史消息里的工具调用列表。
+        toolCalls = toolCalls == null ? null : List.copyOf(toolCalls);
+    }
+
+    /**
+     * system 消息通常只在对话开头出现一次，用来告诉模型“你是谁、能做什么、如何使用工具”。
+     */
+    public static Message system(String content) {
+        return new Message("system", content, null, null);
+    }
+
+    /**
+     * 用户自然语言输入。
+     */
+    public static Message user(String content) {
+        return new Message("user", content, null, null);
+    }
+
+    /**
+     * 不带工具调用的模型回复，也就是最终答复。
+     */
+    public static Message assistant(String content) {
+        return new Message("assistant", content, null, null);
+    }
+
+    /**
+     * 带工具调用的模型回复。
+     *
+     * <p>注意：这类 assistant 消息必须被放回历史，
+     * 否则下一轮模型看不到自己刚才请求了哪些工具。</p>
+     */
+    public static Message assistant(String content, List<ToolCall> toolCalls) {
+        return new Message("assistant", content == null ? "" : content, toolCalls, null);
+    }
+
+    /**
+     * 工具执行结果。
+     *
+     * @param toolCallId 对应 assistant.tool_calls[i].id，模型靠它知道这是哪个工具调用的返回值
+     */
+    public static Message tool(String toolCallId, String content) {
+        return new Message("tool", content, null, toolCallId);
+    }
+}
