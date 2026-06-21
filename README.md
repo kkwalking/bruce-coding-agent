@@ -7,6 +7,7 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 - 短期记忆、长期记忆与上下文压缩
 - Multi-Agent 与 SubAgent
 - SQLite + Embedding 代码 RAG
+- WebSearch + WebFetch 联网搜索与网页抓取
 - HITL 人工审批
 - ReAct、Plan、Multi-Agent 并行执行
 
@@ -15,6 +16,7 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 - JDK 17+
 - Maven 3.9+
 - DeepSeek API Key
+- 可选：智谱 GLM API Key，用于联网搜索（`GLM_API_KEY`，不复用 `DEEPSEEK_API_KEY`）
 - 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置
 
 ## 构建与运行
@@ -22,6 +24,7 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 ```bash
 cp .env.example .env
 # 编辑 .env，填入 DEEPSEEK_API_KEY
+# 如需联网搜索，额外填入 GLM_API_KEY
 
 mvn clean test
 mvn package
@@ -54,6 +57,10 @@ java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 /search <query>
 /graph <name>
 
+/web on|off|status
+/web search <query>
+/web fetch <url>
+
 /hitl on|off|status
 /parallel on|off|status
 
@@ -63,7 +70,30 @@ java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 /exit
 ```
 
-默认状态：ReAct、Memory、HITL 和 Parallel 开启，RAG 关闭。
+默认状态：ReAct、Memory、Web、HITL 和 Parallel 开启，RAG 关闭。
+
+## 联网搜索配置
+
+WebSearch 默认优先使用智谱搜索，单独读取 `GLM_API_KEY`：
+
+```env
+GLM_API_KEY=your_glm_api_key_here
+GLM_SEARCH_ENGINE=search_std
+GLM_SEARCH_CONTENT_SIZE=medium
+```
+
+也可以切换搜索引擎：
+
+```env
+WEB_SEARCH_PROVIDER=serpapi
+SERPAPI_KEY=your_serpapi_key_here
+
+# 或者使用自部署 SearXNG
+WEB_SEARCH_PROVIDER=searxng
+SEARXNG_URL=http://localhost:8888
+```
+
+Agent 会自动使用 `web_search` 和 `web_fetch`。手动调试时可用 `/web search <query>` 和 `/web fetch <url>`。
 
 ## 源码结构
 
@@ -77,6 +107,7 @@ src/main/java/com/brucecli/
 ├── plan/           Plan-and-Execute DAG 与计划执行器
 ├── memory/         Memory 与上下文压缩
 ├── rag/            代码索引和混合检索
+├── web/            联网搜索 Provider、网页抓取与正文提取
 ├── approval/       HITL 审批
 ├── runtime/        运行时并发配置与线程工厂
 └── integrated/     统一运行时与 CLI

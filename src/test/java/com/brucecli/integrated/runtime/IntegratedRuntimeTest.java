@@ -46,10 +46,13 @@ class IntegratedRuntimeTest {
             assertEquals(AgentMode.REACT, status.mode());
             assertTrue(status.memoryEnabled());
             assertFalse(status.ragEnabled());
+            assertTrue(status.webEnabled());
             assertTrue(status.hitlEnabled());
             assertTrue(status.parallelEnabled());
             assertEquals(4, status.maxParallelism());
             assertTrue(status.toolNames().contains("save_long_term_memory"));
+            assertTrue(status.toolNames().contains("web_search"));
+            assertTrue(status.toolNames().contains("web_fetch"));
             assertFalse(status.toolNames().contains("search_code"));
 
             context.commands.handle("/plan");
@@ -64,6 +67,25 @@ class IntegratedRuntimeTest {
             assertTrue(context.commands.handle("/parallel status").output().contains("关闭"));
             context.commands.handle("/parallel on");
             assertTrue(context.runtime.parallelEnabled());
+        }
+    }
+
+    @Test
+    void webSwitchControlsToolsAndPrompt() throws Exception {
+        try (TestContext context = context()) {
+            assertTrue(context.runtime.status().toolNames().contains("web_search"));
+            assertTrue(context.runtime.status().toolNames().contains("web_fetch"));
+            context.runtime.run("需要查一个最新信息");
+            assertTrue(context.chatClient.lastMessages.get(0).content().contains("web_search 和 web_fetch"));
+
+            context.commands.handle("/web off");
+            assertFalse(context.runtime.status().toolNames().contains("web_search"));
+            assertFalse(context.runtime.status().toolNames().contains("web_fetch"));
+            context.runtime.run("普通问题");
+            assertFalse(context.chatClient.lastMessages.get(0).content().contains("web_search 和 web_fetch"));
+
+            String disabled = context.commands.handle("/web search Java 21").output();
+            assertTrue(disabled.contains("Web 当前关闭"));
         }
     }
 

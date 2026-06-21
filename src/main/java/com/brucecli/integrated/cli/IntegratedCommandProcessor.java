@@ -55,6 +55,10 @@ public class IntegratedCommandProcessor {
             if (rag.handled()) {
                 return rag;
             }
+            CommandResult web = handleWeb(input);
+            if (web.handled()) {
+                return web;
+            }
             CommandResult memory = handleMemory(input);
             if (memory.handled()) {
                 return memory;
@@ -81,6 +85,11 @@ public class IntegratedCommandProcessor {
               /index [path]          建立索引，并将 path 设为当前工作目录
               /search <query>        手动观察代码混合检索结果
               /graph <name>          查看类或方法关系图谱
+
+            Web（默认开启）:
+              /web on|off|status
+              /web search <query>    手动联网搜索，使用 GLM_API_KEY 等独立配置
+              /web fetch <url>       抓取网页正文
 
             Memory（默认开启）:
               /memory on|off|status
@@ -141,6 +150,27 @@ public class IntegratedCommandProcessor {
         }
         if (input.startsWith("/graph ")) {
             return CommandResult.handled(runtime.graph(input.substring("/graph ".length()).trim()));
+        }
+        return CommandResult.notHandled();
+    }
+
+    private CommandResult handleWeb(String input) throws Exception {
+        if (input.equalsIgnoreCase("/web on")) {
+            runtime.setWebEnabled(true);
+            return CommandResult.handled("Web 已开启；现在向 Agent 暴露 web_search 和 web_fetch。");
+        }
+        if (input.equalsIgnoreCase("/web off")) {
+            runtime.setWebEnabled(false);
+            return CommandResult.handled("Web 已关闭；web_search 和 web_fetch 已移除。");
+        }
+        if (input.equalsIgnoreCase("/web") || input.equalsIgnoreCase("/web status")) {
+            return CommandResult.handled("Web 当前状态: " + (runtime.webEnabled() ? "开启" : "关闭"));
+        }
+        if (input.startsWith("/web search ")) {
+            return CommandResult.handled(runtime.webSearch(input.substring("/web search ".length()).trim(), 5));
+        }
+        if (input.startsWith("/web fetch ")) {
+            return CommandResult.handled(runtime.webFetch(input.substring("/web fetch ".length()).trim(), 8_000));
         }
         return CommandResult.notHandled();
     }

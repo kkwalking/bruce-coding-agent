@@ -9,6 +9,8 @@ import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.rag.embedding.EmbeddingClient;
 import com.brucecli.rag.store.VectorStore;
+import com.brucecli.runtime.ConcurrencyConfig;
+import com.brucecli.web.search.WebSearchConfig;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -42,6 +44,15 @@ public class IntegratedMain {
             env.get("EMBEDDING_BASE_URL"),
             env.get("EMBEDDING_API_KEY")
         );
+        WebSearchConfig webSearchConfig = new WebSearchConfig(
+            firstNonBlank(env.get("WEB_SEARCH_PROVIDER"), env.get("SEARCH_PROVIDER")),
+            env.get("GLM_API_KEY"),
+            env.get("GLM_SEARCH_ENGINE"),
+            env.get("GLM_SEARCH_CONTENT_SIZE"),
+            env.get("SERPAPI_KEY"),
+            env.get("SEARXNG_URL"),
+            env.get("GLM_WEB_SEARCH_ENDPOINT")
+        );
 
         try (IntegratedRuntime runtime = new IntegratedRuntime(
             chatClient,
@@ -49,7 +60,9 @@ public class IntegratedMain {
             memoryManager,
             embeddingClient,
             VectorStore.defaultDbPath(),
-            hitlHandler
+            hitlHandler,
+            webSearchConfig,
+            ConcurrencyConfig.defaults()
         )) {
             IntegratedCommandProcessor commands = new IntegratedCommandProcessor(runtime, System.out);
             System.out.println(commands.help());
@@ -92,5 +105,12 @@ public class IntegratedMain {
                         Bruce CLI - Integrated Agent
             ==========================================================
             """);
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        return second;
     }
 }

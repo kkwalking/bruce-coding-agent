@@ -17,6 +17,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.16.0</jackson.version>
         <jieba.version>1.0.2</jieba.version>
+        <jsoup.version>1.17.2</jsoup.version>
         <junit.version>5.10.2</junit.version>
         <javaparser.version>3.25.8</javaparser.version>
         <okhttp.version>4.12.0</okhttp.version>
@@ -44,6 +45,11 @@
             <groupId>com.huaban</groupId>
             <artifactId>jieba-analysis</artifactId>
             <version>${jieba.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.version}</version>
         </dependency>
         <dependency>
             <groupId>com.github.javaparser</groupId>

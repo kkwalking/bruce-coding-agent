@@ -29,6 +29,14 @@ import com.brucecli.rag.search.SearchResultFormatter;
 import com.brucecli.rag.store.VectorStore;
 import com.brucecli.rag.store.VectorStore.SearchResult;
 import com.brucecli.rag.tool.RagToolRegistrar;
+import com.brucecli.web.fetch.WebFetchFormatter;
+import com.brucecli.web.fetch.WebFetcher;
+import com.brucecli.web.search.SearchProvider;
+import com.brucecli.web.search.SearchProviderFactory;
+import com.brucecli.web.search.WebSearchConfig;
+import com.brucecli.web.search.WebSearchFormatter;
+import com.brucecli.web.search.WebSearchResult;
+import com.brucecli.web.tool.WebToolRegistrar;
 
 import java.io.PrintStream;
 import java.nio.file.Files;
@@ -60,11 +68,13 @@ public class IntegratedRuntime implements AutoCloseable {
     private final Path ragDbFile;
     private final HitlHandler hitlHandler;
     private final ConcurrencyConfig concurrencyConfig;
+    private final WebSearchConfig webSearchConfig;
 
     private Path workspaceRoot;
     private AgentMode mode = AgentMode.REACT;
     private boolean memoryEnabled = true;
     private boolean ragEnabled;
+    private boolean webEnabled = true;
     private boolean parallelEnabled = true;
 
     private GuardedHitlToolRegistry toolRegistry;
@@ -73,6 +83,8 @@ public class IntegratedRuntime implements AutoCloseable {
     private PlanAndExecuteAgent planAgent;
     private AgentOrchestrator multiAgent;
     private ParallelToolCallExecutor parallelToolCallExecutor;
+    private SearchProvider webSearchProvider;
+    private WebFetcher webFetcher;
 
     public IntegratedRuntime(
         ChatClient chatClient,
@@ -89,6 +101,7 @@ public class IntegratedRuntime implements AutoCloseable {
             embeddingClient,
             ragDbFile,
             hitlHandler,
+            WebSearchConfig.empty(),
             ConcurrencyConfig.defaults()
         );
     }
@@ -102,6 +115,28 @@ public class IntegratedRuntime implements AutoCloseable {
         HitlHandler hitlHandler,
         ConcurrencyConfig concurrencyConfig
     ) {
+        this(
+            chatClient,
+            workspaceRoot,
+            memoryManager,
+            embeddingClient,
+            ragDbFile,
+            hitlHandler,
+            WebSearchConfig.empty(),
+            concurrencyConfig
+        );
+    }
+
+    public IntegratedRuntime(
+        ChatClient chatClient,
+        Path workspaceRoot,
+        MemoryManager memoryManager,
+        EmbeddingClient embeddingClient,
+        Path ragDbFile,
+        HitlHandler hitlHandler,
+        WebSearchConfig webSearchConfig,
+        ConcurrencyConfig concurrencyConfig
+    ) {
         this.chatClient = chatClient;
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.memoryManager = memoryManager;
@@ -109,6 +144,7 @@ public class IntegratedRuntime implements AutoCloseable {
         this.ragDbFile = ragDbFile.toAbsolutePath().normalize();
         this.hitlHandler = hitlHandler;
         this.concurrencyConfig = concurrencyConfig;
+        this.webSearchConfig = webSearchConfig == null ? WebSearchConfig.empty() : webSearchConfig;
         rebuildComponents();
     }
 
@@ -149,6 +185,20 @@ public class IntegratedRuntime implements AutoCloseable {
             return;
         }
         ragEnabled = enabled;
+        rebuildComponents();
+    }
+
+    public boolean webEnabled() {
+        return webEnabled;
+    }
+
+    public void setWebEnabled(boolean enabled) {
+        if (webEnabled == enabled) {
+            return;
+        }
+        webEnabled = enabled;
+        webSearchProvider = null;
+        webFetcher = null;
         rebuildComponents();
     }
 
@@ -212,6 +262,21 @@ public class IntegratedRuntime implements AutoCloseable {
         }
     }
 
+    public String webSearch(String query, int topK) throws Exception {
+        requireWebEnabled();
+        SearchProvider provider = searchProvider();
+        if (!provider.isReady()) {
+            return provider.unavailableHint();
+        }
+        List<WebSearchResult> results = provider.search(query, topK);
+        return WebSearchFormatter.format(query, provider.name(), results);
+    }
+
+    public String webFetch(String url, int maxChars) throws Exception {
+        requireWebEnabled();
+        return WebFetchFormatter.format(fetcher().fetch(url, maxChars));
+    }
+
     public void saveMemory(String content) throws Exception {
         memoryManager.saveFact(content);
     }
@@ -226,6 +291,8 @@ public class IntegratedRuntime implements AutoCloseable {
             workspaceRoot,
             memoryEnabled,
             ragEnabled,
+            webEnabled,
+            webProviderName(),
             hitlHandler.isEnabled(),
             parallelEnabled,
             concurrencyConfig.maxParallelism(),
@@ -295,6 +362,9 @@ public class IntegratedRuntime implements AutoCloseable {
                 ragDbFile
             );
         }
+        if (webEnabled) {
+            WebToolRegistrar.register(toolRegistry, webSearchConfig);
+        }
 
         if (memoryEnabled) {
             memoryAwareAgent = new MemoryAwareAgent(
@@ -335,6 +405,9 @@ public class IntegratedRuntime implements AutoCloseable {
         String instructions = memoryEnabled ? MemoryToolRegistrar.AGENT_INSTRUCTIONS : "";
         if (ragEnabled) {
             instructions = joinContext(instructions, RagToolRegistrar.AGENT_INSTRUCTIONS);
+        }
+        if (webEnabled) {
+            instructions = joinContext(instructions, WebToolRegistrar.AGENT_INSTRUCTIONS);
         }
         if (parallelEnabled) {
             instructions = joinContext(instructions, PARALLEL_AGENT_INSTRUCTIONS);
@@ -388,6 +461,33 @@ public class IntegratedRuntime implements AutoCloseable {
         if (!ragEnabled) {
             throw new IllegalStateException("RAG 当前关闭，请先执行 /rag on");
         }
+    }
+
+    private void requireWebEnabled() {
+        if (!webEnabled) {
+            throw new IllegalStateException("Web 当前关闭，请先执行 /web on");
+        }
+    }
+
+    private synchronized SearchProvider searchProvider() {
+        if (webSearchProvider == null) {
+            webSearchProvider = SearchProviderFactory.create(webSearchConfig);
+        }
+        return webSearchProvider;
+    }
+
+    private synchronized WebFetcher fetcher() {
+        if (webFetcher == null) {
+            webFetcher = new WebFetcher();
+        }
+        return webFetcher;
+    }
+
+    private String webProviderName() {
+        if (!webEnabled) {
+            return "disabled";
+        }
+        return searchProvider().name();
     }
 
     private String joinContext(String first, String second) {

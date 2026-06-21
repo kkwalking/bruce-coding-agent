@@ -9,6 +9,8 @@ public record RuntimeStatus(
     Path workspaceRoot,
     boolean memoryEnabled,
     boolean ragEnabled,
+    boolean webEnabled,
+    String webSearchProvider,
     boolean hitlEnabled,
     boolean parallelEnabled,
     int maxParallelism,
@@ -23,6 +25,7 @@ public record RuntimeStatus(
             Memory: %s
             RAG: %s
             RAG 索引: %s
+            Web: %s
             HITL: %s
             Parallel: %s
             Tools: %s
@@ -32,6 +35,7 @@ public record RuntimeStatus(
                 memoryEnabled ? "开启" : "关闭",
                 ragEnabled ? "开启" : "关闭",
                 ragIndexed ? "已建立" : "未建立",
+                webEnabled ? "开启 (provider=" + webSearchProvider + ")" : "关闭",
                 hitlEnabled ? "开启" : "关闭",
                 parallelEnabled
                     ? "开启 (max=" + maxParallelism + ", timeout=" + batchTimeout.toSeconds() + "s)"
