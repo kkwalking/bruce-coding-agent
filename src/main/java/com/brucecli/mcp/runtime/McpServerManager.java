@@ -13,7 +13,9 @@ import com.brucecli.tool.Tool;
 import com.brucecli.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.io.PrintStream;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -22,25 +24,52 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class McpServerManager implements AutoCloseable {
     public static final String TOOL_PREFIX = "mcp__";
+    private static final Duration DEFAULT_PROGRESS_INTERVAL = Duration.ofSeconds(5);
 
     private final Path workspaceRoot;
     private final McpConfig config;
     private final McpTransportFactory transportFactory;
+    private final PrintStream progressOut;
+    private final Duration progressInterval;
     private final McpSchemaSanitizer schemaSanitizer = new McpSchemaSanitizer();
     private final ConcurrentHashMap<String, McpServerRuntime> runtimes = new ConcurrentHashMap<>();
     private final ExecutorService startupPool;
 
     public McpServerManager(Path workspaceRoot) throws Exception {
-        this(workspaceRoot, new McpConfigLoader(workspaceRoot).load(), new McpTransportFactory());
+        this(
+            workspaceRoot,
+            new McpConfigLoader(workspaceRoot).load(),
+            new McpTransportFactory(),
+            System.out,
+            DEFAULT_PROGRESS_INTERVAL
+        );
     }
 
     McpServerManager(Path workspaceRoot, McpConfig config, McpTransportFactory transportFactory) {
+        this(workspaceRoot, config, transportFactory, System.out, DEFAULT_PROGRESS_INTERVAL);
+    }
+
+    McpServerManager(
+        Path workspaceRoot,
+        McpConfig config,
+        McpTransportFactory transportFactory,
+        PrintStream progressOut,
+        Duration progressInterval
+    ) {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.config = config == null ? new McpConfig(List.of(), List.of()) : config;
         this.transportFactory = transportFactory;
+        this.progressOut = progressOut;
+        if (progressInterval == null || progressInterval.isZero() || progressInterval.isNegative()) {
+            throw new IllegalArgumentException("MCP 启动进度间隔必须大于 0");
+        }
+        this.progressInterval = progressInterval;
         int poolSize = Math.max(1, Math.min(this.config.servers().size(), 8));
         this.startupPool = Executors.newFixedThreadPool(poolSize, new DaemonThreadFactory("bruce-mcp-startup"));
         for (McpServerConfig server : this.config.servers()) {
@@ -52,10 +81,32 @@ public class McpServerManager implements AutoCloseable {
         if (!config.configured()) {
             return;
         }
-        List<CompletableFuture<Void>> futures = config.servers().stream()
-            .map(server -> CompletableFuture.runAsync(() -> startOne(server.name(), true), startupPool))
+        progressOut.printf("🔌 启动 MCP server (%d 个)...%n", config.servers().size());
+        long startedAtNanos = System.nanoTime();
+        List<StartupTask> tasks = config.servers().stream()
+            .map(server -> new StartupTask(
+                server,
+                CompletableFuture.runAsync(() -> startOne(server.name(), true), startupPool)
+            ))
             .toList();
-        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+        ScheduledExecutorService progressExecutor = Executors.newSingleThreadScheduledExecutor(
+            new DaemonThreadFactory("bruce-mcp-progress")
+        );
+        long intervalNanos = progressInterval.toNanos();
+        ScheduledFuture<?> progressTask = progressExecutor.scheduleAtFixedRate(
+            () -> printStartupProgress(tasks, startedAtNanos),
+            intervalNanos,
+            intervalNanos,
+            TimeUnit.NANOSECONDS
+        );
+        try {
+            CompletableFuture.allOf(tasks.stream()
+                .map(StartupTask::future)
+                .toArray(CompletableFuture[]::new)).join();
+        } finally {
+            progressTask.cancel(false);
+            progressExecutor.shutdownNow();
+        }
     }
 
     public boolean configured() {
@@ -181,6 +232,20 @@ public class McpServerManager implements AutoCloseable {
         }
     }
 
+    private void printStartupProgress(List<StartupTask> tasks, long startedAtNanos) {
+        long waitedSeconds = Duration.ofNanos(System.nanoTime() - startedAtNanos).toSeconds();
+        for (StartupTask task : tasks) {
+            if (!task.future().isDone()) {
+                progressOut.printf(
+                    "⏳ %s %s 启动中... (已等待 %ds)%n",
+                    task.server().name(),
+                    task.server().type().name().toLowerCase(),
+                    waitedSeconds
+                );
+            }
+        }
+    }
+
     private List<McpServerRuntime> sortedRuntimes() {
         return runtimes.values().stream()
             .sorted(Comparator.comparing(runtime -> runtime.config().name()))
@@ -215,5 +280,8 @@ public class McpServerManager implements AutoCloseable {
 
     private String sanitizeName(String name) {
         return name.replaceAll("[^A-Za-z0-9_-]", "_");
+    }
+
+    private record StartupTask(McpServerConfig server, CompletableFuture<Void> future) {
     }
 }
