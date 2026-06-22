@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "demo-order-platform": {
+      "disabled": false,
+      "timeout": 60,
+      "type": "streamableHttp",
+      "url": "http://localhost:8777/api-gateway/mcp/gateway_order_demo",
+      "headers": {
+        "Authorization": "Bearer gw-order-demo-key"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${PROJECT_DIR}"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=256"
+      }
+    }
+  }
+}

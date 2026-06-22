@@ -4,15 +4,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 public class EnvLoader {
     public String get(String key) {
-        for (Path envFile : candidateFiles()) {
-            if (!Files.isRegularFile(envFile)) {
-                continue;
-            }
+        Path envFile = envFile();
+        if (Files.isRegularFile(envFile)) {
             try {
                 String value = readValue(envFile, key);
                 if (value != null && !value.isBlank()) {
@@ -25,14 +21,9 @@ public class EnvLoader {
         return System.getenv(key);
     }
 
-    private Set<Path> candidateFiles() {
+    private Path envFile() {
         Path cwd = Path.of("").toAbsolutePath().normalize();
-        Set<Path> paths = new LinkedHashSet<>();
-        paths.add(cwd.resolve(".env"));
-        if (cwd.getParent() != null) {
-            paths.add(cwd.getParent().resolve(".env"));
-        }
-        return paths;
+        return cwd.resolve(".env");
     }
 
     private String readValue(Path file, String key) throws IOException {

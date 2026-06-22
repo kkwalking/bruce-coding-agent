@@ -59,6 +59,10 @@ public class IntegratedCommandProcessor {
             if (web.handled()) {
                 return web;
             }
+            CommandResult mcp = handleMcp(input);
+            if (mcp.handled()) {
+                return mcp;
+            }
             CommandResult memory = handleMemory(input);
             if (memory.handled()) {
                 return memory;
@@ -90,6 +94,13 @@ public class IntegratedCommandProcessor {
               /web on|off|status
               /web search <query>    手动联网搜索，使用 GLM_API_KEY 等独立配置
               /web fetch <url>       抓取网页正文
+
+            MCP:
+              /mcp                   查看 MCP server 状态
+              /mcp restart <name>    重启某个 server
+              /mcp logs <name>       查看某个 server 的 stderr 日志
+              /mcp disable <name>    禁用某个 server
+              /mcp enable <name>     启用某个 server
 
             Memory（默认开启）:
               /memory on|off|status
@@ -171,6 +182,31 @@ public class IntegratedCommandProcessor {
         }
         if (input.startsWith("/web fetch ")) {
             return CommandResult.handled(runtime.webFetch(input.substring("/web fetch ".length()).trim(), 8_000));
+        }
+        return CommandResult.notHandled();
+    }
+
+    private CommandResult handleMcp(String input) {
+        if (input.equalsIgnoreCase("/mcp") || input.equalsIgnoreCase("/mcp status")) {
+            return CommandResult.handled(runtime.mcpStatus());
+        }
+        if (input.startsWith("/mcp restart ")) {
+            String name = input.substring("/mcp restart ".length()).trim();
+            runtime.restartMcpServer(name);
+            return CommandResult.handled("MCP server 已重启: " + name);
+        }
+        if (input.startsWith("/mcp logs ")) {
+            return CommandResult.handled(runtime.mcpLogs(input.substring("/mcp logs ".length()).trim()));
+        }
+        if (input.startsWith("/mcp disable ")) {
+            String name = input.substring("/mcp disable ".length()).trim();
+            runtime.disableMcpServer(name);
+            return CommandResult.handled("MCP server 已禁用: " + name);
+        }
+        if (input.startsWith("/mcp enable ")) {
+            String name = input.substring("/mcp enable ".length()).trim();
+            runtime.enableMcpServer(name);
+            return CommandResult.handled("MCP server 已启用: " + name);
         }
         return CommandResult.notHandled();
     }

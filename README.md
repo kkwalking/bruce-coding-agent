@@ -8,6 +8,7 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 - Multi-Agent 与 SubAgent
 - SQLite + Embedding 代码 RAG
 - WebSearch + WebFetch 联网搜索与网页抓取
+- MCP stdio / Streamable HTTP 工具接入
 - HITL 人工审批
 - ReAct、Plan、Multi-Agent 并行执行
 
@@ -61,6 +62,12 @@ java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 /web search <query>
 /web fetch <url>
 
+/mcp
+/mcp restart <name>
+/mcp logs <name>
+/mcp disable <name>
+/mcp enable <name>
+
 /hitl on|off|status
 /parallel on|off|status
 
@@ -95,6 +102,49 @@ SEARXNG_URL=http://localhost:8888
 
 Agent 会自动使用 `web_search` 和 `web_fetch`。手动调试时可用 `/web search <query>` 和 `/web fetch <url>`。
 
+## MCP 配置
+
+Bruce CLI 会加载两级 MCP 配置：
+
+```text
+~/.brucecli/mcp.json      用户级配置
+.brucecli/mcp.json        项目级配置，优先级更高
+```
+
+配置格式兼容常见 MCP `mcpServers` 写法。stdio 示例：
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${PROJECT_DIR}"],
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=256"
+      }
+    }
+  }
+}
+```
+
+Streamable HTTP 示例：
+
+```json
+{
+  "mcpServers": {
+    "zread": {
+      "type": "http",
+      "url": "https://open.bigmodel.cn/api/mcp/zread/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GLM_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+支持 `${PROJECT_DIR}`、`${HOME}` 和环境变量替换；当前项目 `.env` 里的值也可用于替换。MCP 工具会以 `mcp__server__tool` 形式进入 Agent 工具列表，并默认走 HITL 审批。
+
 ## 源码结构
 
 所有功能位于同一个 Maven module 中，通过 Java package 保持边界：
@@ -108,6 +158,7 @@ src/main/java/com/brucecli/
 ├── memory/         Memory 与上下文压缩
 ├── rag/            代码索引和混合检索
 ├── web/            联网搜索 Provider、网页抓取与正文提取
+├── mcp/            MCP 配置、协议客户端、stdio/HTTP 传输和工具注册
 ├── approval/       HITL 审批
 ├── runtime/        运行时并发配置与线程工厂
 └── integrated/     统一运行时与 CLI

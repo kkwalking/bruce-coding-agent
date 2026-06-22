@@ -11,6 +11,7 @@ public record RuntimeStatus(
     boolean ragEnabled,
     boolean webEnabled,
     String webSearchProvider,
+    String mcpSummary,
     boolean hitlEnabled,
     boolean parallelEnabled,
     int maxParallelism,
@@ -26,6 +27,7 @@ public record RuntimeStatus(
             RAG: %s
             RAG 索引: %s
             Web: %s
+            MCP: %s
             HITL: %s
             Parallel: %s
             Tools: %s
@@ -36,6 +38,7 @@ public record RuntimeStatus(
                 ragEnabled ? "开启" : "关闭",
                 ragIndexed ? "已建立" : "未建立",
                 webEnabled ? "开启 (provider=" + webSearchProvider + ")" : "关闭",
+                mcpSummary,
                 hitlEnabled ? "开启" : "关闭",
                 parallelEnabled
                     ? "开启 (max=" + maxParallelism + ", timeout=" + batchTimeout.toSeconds() + "s)"
