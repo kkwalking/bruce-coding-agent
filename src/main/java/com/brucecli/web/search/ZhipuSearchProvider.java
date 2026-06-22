@@ -15,6 +15,7 @@ import java.util.List;
 
 /**
  * 智谱 Web Search API Provider。
+ * https://docs.bigmodel.cn/api-reference/%E5%B7%A5%E5%85%B7-api/%E7%BD%91%E7%BB%9C%E6%90%9C%E7%B4%A2
  */
 public class ZhipuSearchProvider implements SearchProvider {
     private static final int MAX_QUERY_CHARS = 70;
