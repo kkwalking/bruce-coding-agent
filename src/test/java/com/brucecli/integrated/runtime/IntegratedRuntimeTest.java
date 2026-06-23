@@ -18,6 +18,7 @@ import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.rag.embedding.EmbeddingClient;
+import com.brucecli.web.search.WebSearchConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -53,6 +54,8 @@ class IntegratedRuntimeTest {
             assertTrue(status.toolNames().contains("save_long_term_memory"));
             assertTrue(status.toolNames().contains("web_search"));
             assertTrue(status.toolNames().contains("web_fetch"));
+            assertTrue(status.toolNames().contains("load_skill"));
+            assertTrue(status.toolNames().contains("read_skill_resource"));
             assertFalse(status.toolNames().contains("search_code"));
 
             context.commands.handle("/plan");
@@ -131,6 +134,193 @@ class IntegratedRuntimeTest {
             context.commands.handle("/memory on");
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
             assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
+        }
+    }
+
+    @Test
+    void skillCommandsExposeMetadataAndExplicitPrefixAppliesToCurrentTaskOnly() throws Exception {
+        writeSkill("java-review", "审查 Java 代码", "UNIQUE_REVIEW_INSTRUCTION");
+        CapturingChatClient chatClient = new CapturingChatClient(
+            text("first"),
+            text("second")
+        );
+        try (TestContext context = context(chatClient)) {
+            String list = context.commands.handle("/skill list").output();
+            assertTrue(list.contains("java-review"));
+            assertTrue(list.contains("PROJECT"));
+            assertTrue(context.commands.handle("/skill show java-review").output()
+                .contains("UNIQUE_REVIEW_INSTRUCTION"));
+            assertFalse(context.commands.handle("/skill use java-review").handled());
+
+            assertEquals("first", context.runtime.run("$java-review 第一次任务"));
+            assertTrue(chatClient.allMessages.get(0).stream().anyMatch(message ->
+                "system".equals(message.role())
+                    && message.content().contains("UNIQUE_REVIEW_INSTRUCTION")
+            ));
+            assertTrue(chatClient.allMessages.get(0).stream().anyMatch(message ->
+                "user".equals(message.role()) && "第一次任务".equals(message.content())
+            ));
+
+            assertEquals("second", context.runtime.run("第二次任务"));
+            List<Message> secondAgentMessages = chatClient.allMessages.get(1);
+            assertFalse(secondAgentMessages.stream().anyMatch(message ->
+                message.content() != null && message.content().contains("UNIQUE_REVIEW_INSTRUCTION")
+            ));
+            assertTrue(secondAgentMessages.stream().anyMatch(message ->
+                "system".equals(message.role()) && message.content().contains("java-review")
+            ));
+        }
+    }
+
+    @Test
+    void memoryAgentProgressivelyLoadsMatchingSkillWithoutSelectorCall() throws Exception {
+        writeSkill("java-review", "审查 Java 代码", "AUTO_SELECTED_INSTRUCTION");
+        CapturingChatClient chatClient = new CapturingChatClient(
+            new ChatResponse("", List.of(toolCall(
+                "load_review",
+                "load_skill",
+                "{\"name\":\"java-review\"}"
+            ))),
+            text("done"),
+            text("next")
+        );
+        try (TestContext context = context(chatClient)) {
+            assertEquals("done", context.runtime.run("请审查 Java 代码"));
+            assertEquals(2, chatClient.allMessages.size());
+            assertTrue(chatClient.allMessages.get(0).stream().anyMatch(message ->
+                "system".equals(message.role())
+                    && message.content().contains("java-review")
+                    && !message.content().contains("AUTO_SELECTED_INSTRUCTION")
+            ));
+            assertTrue(chatClient.allMessages.get(1).stream().anyMatch(message ->
+                "tool".equals(message.role())
+                    && message.content().contains("AUTO_SELECTED_INSTRUCTION")
+            ));
+
+            assertEquals("next", context.runtime.run("普通后续任务"));
+            assertFalse(chatClient.allMessages.get(2).stream().anyMatch(message ->
+                message.content() != null && message.content().contains("AUTO_SELECTED_INSTRUCTION")
+            ));
+        }
+    }
+
+    @Test
+    void unknownExplicitSkillFailsBeforeCallingModel() throws Exception {
+        try (TestContext context = context()) {
+            IllegalArgumentException error = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> context.runtime.run("$missing 执行任务")
+            );
+
+            assertTrue(error.getMessage().contains("未知 Skill"));
+            assertTrue(context.chatClient.allMessages.isEmpty());
+        }
+    }
+
+    @Test
+    void reactHistoryRedactsLoadedSkillBeforeNextTask() throws Exception {
+        writeSkill("review", "代码审查", "REACT_SECRET_INSTRUCTION");
+        CapturingChatClient chatClient = new CapturingChatClient(
+            new ChatResponse("", List.of(toolCall(
+                "load_review",
+                "load_skill",
+                "{\"name\":\"review\"}"
+            ))),
+            text("reviewed"),
+            text("next")
+        );
+        try (TestContext context = context(chatClient)) {
+            context.commands.handle("/memory off");
+            assertEquals("reviewed", context.runtime.run("审查代码"));
+            assertEquals("next", context.runtime.run("后续任务"));
+
+            List<Message> nextMessages = chatClient.allMessages.get(2);
+            assertFalse(nextMessages.stream().anyMatch(message ->
+                message.content() != null && message.content().contains("REACT_SECRET_INSTRUCTION")
+            ));
+            assertTrue(nextMessages.stream().anyMatch(message ->
+                "tool".equals(message.role())
+                    && message.content().contains("已从历史中移除")
+            ));
+        }
+    }
+
+    @Test
+    void planPlannerCanOnlyReadActiveSkillResources() throws Exception {
+        Path skillDirectory = writeSkill("plan-helper", "辅助制定计划", "先读取 references/guide.txt");
+        Files.createDirectories(skillDirectory.resolve("references"));
+        Files.writeString(skillDirectory.resolve("references/guide.txt"), "plan evidence");
+        CapturingChatClient chatClient = new CapturingChatClient(
+            new ChatResponse("", List.of(toolCall(
+                "load_skill",
+                "load_skill",
+                "{\"name\":\"plan-helper\"}"
+            ))),
+            new ChatResponse("", List.of(toolCall(
+                "read_skill",
+                "read_skill_resource",
+                "{\"skill\":\"plan-helper\",\"path\":\"references/guide.txt\"}"
+            ))),
+            text("""
+                {
+                  "goal": "分析",
+                  "tasks": [
+                    {"id": "t1", "description": "使用 Skill 资料分析", "type": "ANALYSIS", "dependencies": []}
+                  ]
+                }
+                """)
+        );
+        try (TestContext context = context(chatClient)) {
+            context.commands.handle("/plan");
+            String result = context.runtime.run("制定分析计划");
+
+            assertTrue(result.contains("使用 Skill 资料分析"));
+            assertEquals(
+                List.of("load_skill", "read_skill_resource"),
+                chatClient.allTools.get(0).stream().map(ToolDefinition::name).toList()
+            );
+            assertTrue(chatClient.allMessages.get(2).stream().anyMatch(message ->
+                "tool".equals(message.role()) && message.content().contains("plan evidence")
+            ));
+        }
+    }
+
+    @Test
+    void multiAgentPlannerIsRestrictedWhileWorkerReceivesSkillContextAndFullTools() throws Exception {
+        writeSkill("multi-helper", "辅助多 Agent", "MULTI_SKILL_INSTRUCTION");
+        CapturingChatClient chatClient = new CapturingChatClient(
+            new ChatResponse("", List.of(toolCall(
+                "load_multi",
+                "load_skill",
+                "{\"name\":\"multi-helper\"}"
+            ))),
+            text("""
+                {
+                  "goal": "分析",
+                  "steps": [
+                    {"id": "step_1", "description": "完成分析", "type": "GENERAL", "dependencies": []}
+                  ]
+                }
+                """),
+            text("worker done"),
+            text("""
+                {"approved":true,"summary":"ok","issues":[],"suggestions":[]}
+                """)
+        );
+        try (TestContext context = context(chatClient)) {
+            context.commands.handle("/multi");
+            String result = context.runtime.run("执行多 Agent 分析");
+
+            assertTrue(result.contains("所有步骤已通过"));
+            assertEquals(
+                List.of("load_skill", "read_skill_resource"),
+                chatClient.allTools.get(0).stream().map(ToolDefinition::name).toList()
+            );
+            assertTrue(chatClient.allTools.get(2).stream().map(ToolDefinition::name).toList()
+                .contains("write_file"));
+            assertTrue(chatClient.allMessages.get(2).stream().anyMatch(message ->
+                message.content() != null && message.content().contains("MULTI_SKILL_INSTRUCTION")
+            ));
         }
     }
 
@@ -271,13 +461,29 @@ class IntegratedRuntimeTest {
             new FakeEmbeddingClient(),
             tempDir.resolve("rag/codebase.db"),
             new EnabledHitlHandler(),
-            new ConcurrencyConfig(4, Duration.ofSeconds(2), 2_000)
+            WebSearchConfig.empty(),
+            new ConcurrencyConfig(4, Duration.ofSeconds(2), 2_000),
+            tempDir.resolve("home")
         );
         return new TestContext(
             runtime,
             new IntegratedCommandProcessor(runtime, new PrintStream(OutputStream.nullOutputStream())),
             chatClient
         );
+    }
+
+    private Path writeSkill(String name, String description, String instructions) throws Exception {
+        Path directory = tempDir.resolve(".brucecli/skills").resolve(name);
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve("SKILL.md"), """
+            ---
+            name: %s
+            description: %s
+            ---
+
+            %s
+            """.formatted(name, description, instructions));
+        return directory;
     }
 
     private static ChatResponse text(String content) {
@@ -302,6 +508,8 @@ class IntegratedRuntimeTest {
     private static class CapturingChatClient implements ChatClient {
         private final Queue<ChatResponse> responses = new ArrayDeque<>();
         private List<Message> lastMessages = List.of();
+        private final List<List<Message>> allMessages = new java.util.ArrayList<>();
+        private final List<List<ToolDefinition>> allTools = new java.util.ArrayList<>();
 
         CapturingChatClient(ChatResponse... responses) {
             this.responses.addAll(List.of(responses));
@@ -310,6 +518,8 @@ class IntegratedRuntimeTest {
         @Override
         public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) {
             lastMessages = List.copyOf(messages);
+            allMessages.add(List.copyOf(messages));
+            allTools.add(List.copyOf(tools));
             ChatResponse response = responses.poll();
             return response == null ? text("ok") : response;
         }

@@ -3,6 +3,8 @@ package com.brucecli.integrated.cli;
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.memory.model.MemoryEntry;
+import com.brucecli.skill.SkillDefinition;
+import com.brucecli.skill.SkillLoadResult;
 
 import java.io.PrintStream;
 import java.nio.file.Path;
@@ -50,6 +52,10 @@ public class IntegratedCommandProcessor {
             CommandResult parallel = handleParallel(input);
             if (parallel.handled()) {
                 return parallel;
+            }
+            CommandResult skill = handleSkill(input);
+            if (skill.handled()) {
+                return skill;
             }
             CommandResult rag = handleRag(input);
             if (rag.handled()) {
@@ -113,12 +119,98 @@ public class IntegratedCommandProcessor {
             Parallel（默认开启）:
               /parallel on|off|status
 
+            Skill:
+              /skill list            列出已加载 Skill
+              /skill show <name>     查看 Skill 元数据和完整指令
+              /skill reload          重新扫描用户级和项目级 Skill
+              $<skill> <任务>         在同一条输入中显式使用 Skill
+
             通用:
               /status                查看统一运行状态
               /clear                 清空会话状态，保留长期记忆和 RAG 索引
               /help
               /exit
             """;
+    }
+
+    private CommandResult handleSkill(String input) {
+        if (input.equalsIgnoreCase("/skill") || input.equalsIgnoreCase("/skill list")) {
+            return CommandResult.handled(renderSkillList(
+                runtime.skills(),
+                runtime.skillOverrides(),
+                runtime.skillDiagnostics()
+            ));
+        }
+        if (input.equalsIgnoreCase("/skill reload")) {
+            SkillLoadResult result = runtime.reloadSkills();
+            StringBuilder output = new StringBuilder("Skill 已重新加载，共 ")
+                .append(result.skills().size())
+                .append(" 个有效 Skill。");
+            appendSkillNotes(output, result.overrides(), result.diagnostics());
+            return CommandResult.handled(output.toString());
+        }
+        if (input.startsWith("/skill show ")) {
+            String name = input.substring("/skill show ".length()).trim();
+            SkillDefinition skill = runtime.skill(name);
+            return CommandResult.handled("""
+                Skill: %s
+                来源: %s
+                文件: %s
+                描述: %s
+
+                %s
+                """.formatted(
+                    skill.name(),
+                    skill.source(),
+                    skill.skillFile(),
+                    skill.description(),
+                    skill.instructions()
+                ).strip());
+        }
+        return CommandResult.notHandled();
+    }
+
+    private String renderSkillList(
+        List<SkillDefinition> skills,
+        List<String> overrides,
+        List<String> diagnostics
+    ) {
+        StringBuilder output = new StringBuilder();
+        if (skills.isEmpty()) {
+            output.append("当前没有可用 Skill。");
+        } else {
+            output.append("已加载 Skills:\n");
+            for (SkillDefinition skill : skills) {
+                output.append("- ")
+                    .append(skill.name())
+                    .append(" [").append(skill.source()).append("] ")
+                    .append(skill.description())
+                    .append('\n');
+            }
+            if (output.charAt(output.length() - 1) == '\n') {
+                output.setLength(output.length() - 1);
+            }
+        }
+        appendSkillNotes(output, overrides, diagnostics);
+        return output.toString();
+    }
+
+    private void appendSkillNotes(
+        StringBuilder output,
+        List<String> overrides,
+        List<String> diagnostics
+    ) {
+        if (!overrides.isEmpty()) {
+            output.append("\n覆盖信息:\n");
+            overrides.forEach(item -> output.append("- ").append(item).append('\n'));
+        }
+        if (!diagnostics.isEmpty()) {
+            output.append("\n加载诊断:\n");
+            diagnostics.forEach(item -> output.append("- ").append(item).append('\n'));
+        }
+        while (!output.isEmpty() && output.charAt(output.length() - 1) == '\n') {
+            output.setLength(output.length() - 1);
+        }
     }
 
     private CommandResult handleParallel(String input) {

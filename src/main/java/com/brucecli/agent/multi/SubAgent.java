@@ -8,11 +8,14 @@ import com.brucecli.agent.multi.model.AgentMessage;
 import com.brucecli.agent.multi.model.AgentRole;
 import com.brucecli.agent.multi.model.ExecutionStep;
 import com.brucecli.tool.ToolRegistry;
+import com.brucecli.skill.SkillToolRegistrar;
 
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 子 Agent 实现。
@@ -56,6 +59,10 @@ public class SubAgent {
     }
 
     public AgentMessage plan(String userTask, String memoryPrompt) {
+        return plan(userTask, memoryPrompt, "");
+    }
+
+    public AgentMessage plan(String userTask, String memoryPrompt, String taskSystemContext) {
         ensureRole(AgentRole.PLANNER);
         String input = """
             用户任务:
@@ -77,7 +84,7 @@ public class SubAgent {
               ]
             }
             """.formatted(userTask, blankToNone(memoryPrompt));
-        return run(input, false, AgentMessage.Type.RESULT, System.out);
+        return run(input, taskSystemContext, true, AgentMessage.Type.RESULT, System.out);
     }
 
     public AgentMessage execute(
@@ -85,6 +92,17 @@ public class SubAgent {
         String originalTask,
         String completedContext,
         String feedback,
+        PrintStream out
+    ) {
+        return execute(step, originalTask, completedContext, feedback, "", out);
+    }
+
+    public AgentMessage execute(
+        ExecutionStep step,
+        String originalTask,
+        String completedContext,
+        String feedback,
+        String taskSystemContext,
         PrintStream out
     ) {
         ensureRole(AgentRole.WORKER);
@@ -113,7 +131,7 @@ public class SubAgent {
                 blankToNone(completedContext),
                 blankToNone(feedback)
             );
-        return run(input, true, AgentMessage.Type.RESULT, out);
+        return run(input, taskSystemContext, true, AgentMessage.Type.RESULT, out);
     }
 
     public AgentMessage review(String stepDescription, String executionResult, PrintStream out) {
@@ -137,7 +155,7 @@ public class SubAgent {
 
             如果证据不足、结果含糊、没有完成步骤要求，approved 必须为 false。
             """.formatted(stepDescription, executionResult);
-        return run(input, false, AgentMessage.Type.RESULT, out);
+        return run(input, "", false, AgentMessage.Type.RESULT, out);
     }
 
     public synchronized void clearHistory() {
@@ -147,41 +165,57 @@ public class SubAgent {
 
     private synchronized AgentMessage run(
         String input,
+        String taskSystemContext,
         boolean allowTools,
         AgentMessage.Type resultType,
         PrintStream out
     ) {
-        chatHistory.add(Message.user(input));
-        List<com.brucecli.llm.ToolDefinition> tools = allowTools ? toolRegistry.getToolDefinitions() : List.of();
-
-        for (int iteration = 1; iteration <= maxIterations; iteration++) {
-            ChatResponse response;
-            try {
-                response = llmClient.chat(chatHistory, tools);
-            } catch (IOException e) {
-                return AgentMessage.error(name, role, "LLM 调用失败: " + e.getMessage());
-            } catch (RuntimeException e) {
-                return AgentMessage.error(name, role, "执行失败: " + e.getMessage());
-            }
-
-            if (allowTools && response.hasToolCalls()) {
-                chatHistory.add(Message.assistant(response.content(), response.toolCalls()));
-                for (ToolCall toolCall : response.toolCalls()) {
-                    String toolName = toolCall.function().name();
-                    String arguments = toolCall.function().arguments();
-                    out.printf("[%s] 调用工具 %s %s%n", name, toolName, arguments);
-                    String toolResult = toolRegistry.executeTool(toolName, arguments);
-                    out.printf("[%s] 工具结果: %s%n", name, abbreviate(toolResult, TOOL_OUTPUT_PREVIEW));
-                    chatHistory.add(Message.tool(toolCall.id(), toolResult));
-                }
-                continue;
-            }
-
-            chatHistory.add(Message.assistant(response.content()));
-            return new AgentMessage(name, role, response.content(), resultType);
+        Message temporaryContext = null;
+        if (taskSystemContext != null && !taskSystemContext.isBlank()) {
+            temporaryContext = Message.system(taskSystemContext);
+            chatHistory.add(temporaryContext);
         }
+        chatHistory.add(Message.user(input));
+        List<com.brucecli.llm.ToolDefinition> tools = allowTools && toolRegistry != null
+            ? toolRegistry.getToolDefinitions()
+            : List.of();
 
-        return AgentMessage.error(name, role, "达到最大迭代次数限制: " + maxIterations);
+        try {
+            for (int iteration = 1; iteration <= maxIterations; iteration++) {
+                ChatResponse response;
+                try {
+                    response = llmClient.chat(chatHistory, tools);
+                } catch (IOException e) {
+                    return AgentMessage.error(name, role, "LLM 调用失败: " + e.getMessage());
+                } catch (RuntimeException e) {
+                    return AgentMessage.error(name, role, "执行失败: " + e.getMessage());
+                }
+
+                if (allowTools && response.hasToolCalls()) {
+                    chatHistory.add(Message.assistant(response.content(), response.toolCalls()));
+                    for (ToolCall toolCall : response.toolCalls()) {
+                        String toolName = toolCall.function().name();
+                        String arguments = toolCall.function().arguments();
+                        out.printf("[%s] 调用工具 %s %s%n", name, toolName, arguments);
+                        String toolResult = toolRegistry == null
+                            ? "当前角色不允许调用工具"
+                            : toolRegistry.executeTool(toolName, arguments);
+                        out.printf("[%s] 工具结果: %s%n", name, abbreviate(toolResult, TOOL_OUTPUT_PREVIEW));
+                        chatHistory.add(Message.tool(toolCall.id(), toolResult));
+                    }
+                    continue;
+                }
+
+                chatHistory.add(Message.assistant(response.content()));
+                return new AgentMessage(name, role, response.content(), resultType);
+            }
+            return AgentMessage.error(name, role, "达到最大迭代次数限制: " + maxIterations);
+        } finally {
+            if (temporaryContext != null) {
+                chatHistory.remove(temporaryContext);
+            }
+            redactSkillToolResults();
+        }
     }
 
     private void ensureRole(AgentRole expected) {
@@ -230,5 +264,27 @@ public class SubAgent {
             return value == null ? "" : value;
         }
         return value.substring(0, maxChars) + "...";
+    }
+
+    private void redactSkillToolResults() {
+        Set<String> skillCallIds = new HashSet<>();
+        for (Message message : chatHistory) {
+            if (message.toolCalls() == null) {
+                continue;
+            }
+            message.toolCalls().stream()
+                .filter(call -> SkillToolRegistrar.isSkillTool(call.function().name()))
+                .map(ToolCall::id)
+                .forEach(skillCallIds::add);
+        }
+        for (int i = 0; i < chatHistory.size(); i++) {
+            Message message = chatHistory.get(i);
+            if ("tool".equals(message.role()) && skillCallIds.contains(message.toolCallId())) {
+                chatHistory.set(
+                    i,
+                    Message.tool(message.toolCallId(), "[Skill 内容仅对原任务有效，已从历史中移除]")
+                );
+            }
+        }
     }
 }

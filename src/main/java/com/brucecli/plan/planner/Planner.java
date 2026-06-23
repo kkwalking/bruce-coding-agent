@@ -17,6 +17,14 @@ public interface Planner {
         return plan(userGoal);
     }
 
+    default ExecutionPlan plan(
+        String userGoal,
+        String supplementalContext,
+        String taskSystemContext
+    ) throws IOException {
+        return plan(userGoal, supplementalContext);
+    }
+
     /**
      * 重新规划。
      *
@@ -24,5 +32,22 @@ public interface Planner {
      */
     default ExecutionPlan replan(ExecutionPlan failedPlan, String failureReason) throws IOException {
         return plan("原目标: " + failedPlan.goal() + "\n失败原因: " + failureReason + "\n请重新制定可执行计划。");
+    }
+
+    default ExecutionPlan replan(
+        ExecutionPlan failedPlan,
+        String failureReason,
+        String supplementalContext
+    ) throws IOException {
+        return replan(failedPlan, failureReason);
+    }
+
+    default ExecutionPlan replan(
+        ExecutionPlan failedPlan,
+        String failureReason,
+        String supplementalContext,
+        String taskSystemContext
+    ) throws IOException {
+        return replan(failedPlan, failureReason, supplementalContext);
     }
 }

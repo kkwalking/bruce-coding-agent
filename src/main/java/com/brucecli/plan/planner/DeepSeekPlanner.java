@@ -3,10 +3,13 @@ package com.brucecli.plan.planner;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.ToolCall;
 import com.brucecli.plan.model.ExecutionPlan;
 import com.brucecli.plan.model.TaskStatus;
+import com.brucecli.tool.ToolRegistry;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -16,6 +19,7 @@ import java.util.List;
  * 它只负责一次性产出结构化计划，后续执行阶段由 Java 的 DAG 执行器完成。</p>
  */
 public class DeepSeekPlanner implements Planner {
+    private static final int MAX_RESOURCE_ITERATIONS = 5;
     private static final String BASE_SYSTEM_PROMPT = """
         你是 BruceCLI 的 Plan-and-Execute 规划器。
         你的任务是把用户目标拆解为可执行 DAG 任务，只返回 JSON，不要返回 Markdown。
@@ -48,15 +52,30 @@ public class DeepSeekPlanner implements Planner {
     private final ChatClient chatClient;
     private final PlanJsonParser parser;
     private final String systemPrompt;
+    private final ToolRegistry planningToolRegistry;
 
     public DeepSeekPlanner(ChatClient chatClient, String additionalSystemPrompt) {
-        this(chatClient, new PlanJsonParser(), additionalSystemPrompt);
+        this(chatClient, additionalSystemPrompt, null);
     }
 
-    private DeepSeekPlanner(ChatClient chatClient, PlanJsonParser parser, String additionalSystemPrompt) {
+    public DeepSeekPlanner(
+        ChatClient chatClient,
+        String additionalSystemPrompt,
+        ToolRegistry planningToolRegistry
+    ) {
+        this(chatClient, new PlanJsonParser(), additionalSystemPrompt, planningToolRegistry);
+    }
+
+    private DeepSeekPlanner(
+        ChatClient chatClient,
+        PlanJsonParser parser,
+        String additionalSystemPrompt,
+        ToolRegistry planningToolRegistry
+    ) {
         this.chatClient = chatClient;
         this.parser = parser;
         this.systemPrompt = appendSystemPrompt(additionalSystemPrompt);
+        this.planningToolRegistry = planningToolRegistry;
     }
 
     @Override
@@ -66,6 +85,15 @@ public class DeepSeekPlanner implements Planner {
 
     @Override
     public ExecutionPlan plan(String userGoal, String supplementalContext) throws IOException {
+        return plan(userGoal, supplementalContext, "");
+    }
+
+    @Override
+    public ExecutionPlan plan(
+        String userGoal,
+        String supplementalContext,
+        String taskSystemContext
+    ) throws IOException {
         String userMessage = userGoal;
         if (supplementalContext != null && !supplementalContext.isBlank()) {
             userMessage = """
@@ -78,20 +106,58 @@ public class DeepSeekPlanner implements Planner {
                 请只围绕用户原始目标制定计划。补充上下文仅用于提高计划准确性。
                 """.formatted(userGoal, supplementalContext);
         }
-        List<Message> messages = List.of(
-            Message.system(systemPrompt),
-            Message.user(userMessage)
-        );
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.system(systemPrompt));
+        if (taskSystemContext != null && !taskSystemContext.isBlank()) {
+            messages.add(Message.system(taskSystemContext));
+        }
+        messages.add(Message.user(userMessage));
 
-        // 规划阶段不传 tools，避免模型直接发起工具调用；这里只要纯 JSON 计划。
-        ChatResponse response = chatClient.chat(messages, List.of());
-        return parser.parse(response.content(), userGoal);
+        for (int iteration = 0; iteration < MAX_RESOURCE_ITERATIONS; iteration++) {
+            List<com.brucecli.llm.ToolDefinition> tools = planningToolRegistry == null
+                ? List.of()
+                : planningToolRegistry.getToolDefinitions();
+            ChatResponse response = chatClient.chat(messages, tools);
+            if (!response.hasToolCalls()) {
+                return parser.parse(response.content(), userGoal);
+            }
+            messages.add(Message.assistant(response.content(), response.toolCalls()));
+            for (ToolCall toolCall : response.toolCalls()) {
+                String result = planningToolRegistry == null
+                    ? "规划阶段不允许调用工具"
+                    : planningToolRegistry.executeTool(
+                        toolCall.function().name(),
+                        toolCall.function().arguments()
+                    );
+                messages.add(Message.tool(toolCall.id(), result));
+            }
+        }
+        throw new IOException("规划器读取 Skill 资源次数超过限制");
     }
 
     @Override
     public ExecutionPlan replan(ExecutionPlan failedPlan, String failureReason) throws IOException {
+        return replan(failedPlan, failureReason, "");
+    }
+
+    @Override
+    public ExecutionPlan replan(
+        ExecutionPlan failedPlan,
+        String failureReason,
+        String supplementalContext
+    ) throws IOException {
+        return replan(failedPlan, failureReason, supplementalContext, "");
+    }
+
+    @Override
+    public ExecutionPlan replan(
+        ExecutionPlan failedPlan,
+        String failureReason,
+        String supplementalContext,
+        String taskSystemContext
+    ) throws IOException {
         String context = buildContext(failedPlan, failureReason);
-        return plan(context);
+        return plan(context, supplementalContext, taskSystemContext);
     }
 
     private String buildContext(ExecutionPlan failedPlan, String failureReason) {

@@ -7,12 +7,15 @@ import com.brucecli.llm.ToolCall;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.tool.ToolCallResult;
 import com.brucecli.tool.ToolRegistry;
+import com.brucecli.skill.SkillToolRegistrar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Agent 的核心：维护对话历史，并驱动 ReAct 循环。
@@ -82,61 +85,78 @@ public class Agent {
      * 如果模型没有返回 tool_calls，就认为任务完成并返回最终文本。</p>
      */
     public String run(String userInput) {
+        return run(userInput, "");
+    }
+
+    public String run(String userInput, String taskSystemContext) {
         if (userInput == null || userInput.isBlank()) {
             return "请输入任务内容";
         }
 
         logger.info("[Agent] 开始任务: {}", userInput);
 
+        Message temporaryContext = null;
+        if (taskSystemContext != null && !taskSystemContext.isBlank()) {
+            temporaryContext = Message.system(taskSystemContext);
+            conversationHistory.add(temporaryContext);
+        }
+
         // 用户输入必须加入历史，否则模型不知道这一轮要做什么。
         conversationHistory.add(Message.user(userInput));
 
-        int iteration = 0;
-        int retryCount = 0;
-        while (iteration < maxIterations) {
-            iteration++;
+        try {
+            int iteration = 0;
+            int retryCount = 0;
+            while (iteration < maxIterations) {
+                iteration++;
 
-            ChatResponse response;
-            try {
-                // 每次都发送完整历史和完整工具清单，让模型可以基于之前的观察继续行动。
-                response = llmClient.chat(conversationHistory, toolRegistry.getToolDefinitions());
-                retryCount = 0;
-            } catch (IOException e) {
-                if (retryCount < MAX_RETRIES) {
-                    retryCount++;
-                    logger.warn("[Agent] LLM 调用失败，准备重试: {}", e.getMessage());
+                ChatResponse response;
+                try {
+                    // 每次都发送完整历史和完整工具清单，让模型可以基于之前的观察继续行动。
+                    response = llmClient.chat(conversationHistory, toolRegistry.getToolDefinitions());
+                    retryCount = 0;
+                } catch (IOException e) {
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        logger.warn("[Agent] LLM 调用失败，准备重试: {}", e.getMessage());
+                        continue;
+                    }
+                    return "网络错误: " + e.getMessage();
+                } catch (Exception e) {
+                    return "执行错误: " + e.getMessage();
+                }
+
+                if (response.hasToolCalls()) {
+                    // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
+                    conversationHistory.add(Message.assistant(response.content(), response.toolCalls()));
+                    for (ToolCallResult toolResult : toolCallExecutor.execute(response.toolCalls())) {
+                        ToolCall toolCall = toolResult.toolCall();
+                        logger.info(
+                            "[Agent] 工具 {} 完成，结果: {}",
+                            toolCall.function().name(),
+                            toolResult.result()
+                        );
+
+                        // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
+                        conversationHistory.add(Message.tool(toolCall.id(), toolResult.result()));
+                    }
+
+                    // 工具执行完不直接返回给用户，而是继续让模型基于工具结果生成下一步或最终回答。
                     continue;
                 }
-                return "网络错误: " + e.getMessage();
-            } catch (Exception e) {
-                return "执行错误: " + e.getMessage();
+
+                // 没有工具调用，说明模型已经给出最终回答。
+                conversationHistory.add(Message.assistant(response.content()));
+                return response.content();
             }
 
-            if (response.hasToolCalls()) {
-                // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
-                conversationHistory.add(Message.assistant(response.content(), response.toolCalls()));
-                for (ToolCallResult toolResult : toolCallExecutor.execute(response.toolCalls())) {
-                    ToolCall toolCall = toolResult.toolCall();
-                    logger.info(
-                        "[Agent] 工具 {} 完成，结果: {}",
-                        toolCall.function().name(),
-                        toolResult.result()
-                    );
-
-                    // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
-                    conversationHistory.add(Message.tool(toolCall.id(), toolResult.result()));
-                }
-
-                // 工具执行完不直接返回给用户，而是继续让模型基于工具结果生成下一步或最终回答。
-                continue;
+            return "达到最大迭代次数限制";
+        } finally {
+            if (temporaryContext != null) {
+                conversationHistory.remove(temporaryContext);
             }
-
-            // 没有工具调用，说明模型已经给出最终回答。
-            conversationHistory.add(Message.assistant(response.content()));
-            return response.content();
+            redactSkillToolResults();
         }
-
-        return "达到最大迭代次数限制";
     }
 
     public void clearHistory() {
@@ -151,5 +171,27 @@ public class Agent {
             return SYSTEM_PROMPT;
         }
         return SYSTEM_PROMPT + "\n" + additionalSystemPrompt.strip();
+    }
+
+    private void redactSkillToolResults() {
+        Set<String> skillCallIds = new HashSet<>();
+        for (Message message : conversationHistory) {
+            if (message.toolCalls() == null) {
+                continue;
+            }
+            message.toolCalls().stream()
+                .filter(call -> SkillToolRegistrar.isSkillTool(call.function().name()))
+                .map(ToolCall::id)
+                .forEach(skillCallIds::add);
+        }
+        for (int i = 0; i < conversationHistory.size(); i++) {
+            Message message = conversationHistory.get(i);
+            if ("tool".equals(message.role()) && skillCallIds.contains(message.toolCallId())) {
+                conversationHistory.set(
+                    i,
+                    Message.tool(message.toolCallId(), "[Skill 内容仅对原任务有效，已从历史中移除]")
+                );
+            }
+        }
     }
 }

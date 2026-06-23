@@ -28,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Multi-Agent 编排器。
@@ -49,6 +50,7 @@ public class AgentOrchestrator implements AutoCloseable {
     private final ObjectMapper mapper = new ObjectMapper();
     private final int maxReviewRetries;
     private final Duration batchTimeout;
+    private final Supplier<String> skillContextSupplier;
 
     public AgentOrchestrator(
         ChatClient llmClient,
@@ -59,6 +61,57 @@ public class AgentOrchestrator implements AutoCloseable {
         String additionalSystemPrompt,
         Duration batchTimeout,
         ThreadFactory threadFactory
+    ) {
+        this(
+            llmClient,
+            toolRegistry,
+            null,
+            memoryManager,
+            workerCount,
+            maxReviewRetries,
+            additionalSystemPrompt,
+            batchTimeout,
+            threadFactory,
+            () -> ""
+        );
+    }
+
+    public AgentOrchestrator(
+        ChatClient llmClient,
+        ToolRegistry toolRegistry,
+        ToolRegistry planningToolRegistry,
+        MemoryManager memoryManager,
+        int workerCount,
+        int maxReviewRetries,
+        String additionalSystemPrompt,
+        Duration batchTimeout,
+        ThreadFactory threadFactory
+    ) {
+        this(
+            llmClient,
+            toolRegistry,
+            planningToolRegistry,
+            memoryManager,
+            workerCount,
+            maxReviewRetries,
+            additionalSystemPrompt,
+            batchTimeout,
+            threadFactory,
+            () -> ""
+        );
+    }
+
+    public AgentOrchestrator(
+        ChatClient llmClient,
+        ToolRegistry toolRegistry,
+        ToolRegistry planningToolRegistry,
+        MemoryManager memoryManager,
+        int workerCount,
+        int maxReviewRetries,
+        String additionalSystemPrompt,
+        Duration batchTimeout,
+        ThreadFactory threadFactory,
+        Supplier<String> skillContextSupplier
     ) {
         if (workerCount <= 0) {
             throw new IllegalArgumentException("workerCount 必须大于 0");
@@ -71,7 +124,14 @@ public class AgentOrchestrator implements AutoCloseable {
         this.memoryManager = memoryManager;
         this.maxReviewRetries = maxReviewRetries;
         this.batchTimeout = batchTimeout;
-        this.planner = new SubAgent("planner", AgentRole.PLANNER, llmClient, toolRegistry, additionalSystemPrompt);
+        this.skillContextSupplier = skillContextSupplier == null ? () -> "" : skillContextSupplier;
+        this.planner = new SubAgent(
+            "planner",
+            AgentRole.PLANNER,
+            llmClient,
+            planningToolRegistry,
+            additionalSystemPrompt
+        );
 
         List<SubAgent> createdWorkers = new ArrayList<>();
         for (int i = 1; i <= workerCount; i++) {
@@ -93,6 +153,15 @@ public class AgentOrchestrator implements AutoCloseable {
     }
 
     public MultiAgentResult execute(String userTask, String supplementalContext, PrintStream out) {
+        return execute(userTask, supplementalContext, "", out);
+    }
+
+    public MultiAgentResult execute(
+        String userTask,
+        String supplementalContext,
+        String taskSkillContext,
+        PrintStream out
+    ) {
         if (userTask == null || userTask.isBlank()) {
             return new MultiAgentResult("", false, List.of(), "请输入任务内容", 0);
         }
@@ -102,7 +171,7 @@ public class AgentOrchestrator implements AutoCloseable {
 
         String memoryPrompt = joinContext(buildMemoryPrompt(userTask), supplementalContext);
         out.println("[orchestrator] 请求 Planner 拆解任务...");
-        AgentMessage planMessage = planner.plan(userTask, memoryPrompt);
+        AgentMessage planMessage = planner.plan(userTask, memoryPrompt, taskSkillContext);
         ExecutionPlan plan = parseOrFallback(userTask, planMessage, out);
 
         out.printf("[orchestrator] 计划生成完成，共 %d 个步骤%n", plan.steps().size());
@@ -117,7 +186,7 @@ public class AgentOrchestrator implements AutoCloseable {
                 break;
             }
 
-            executeStepBatch(userTask, plan, executableSteps, out);
+            executeStepBatch(userTask, plan, executableSteps, taskSkillContext, out);
         }
 
         boolean success = plan.allStepsCompleted();
@@ -184,15 +253,22 @@ public class AgentOrchestrator implements AutoCloseable {
         String userTask,
         ExecutionPlan plan,
         ExecutionStep step,
+        String taskSkillContext,
         PrintStream out
     ) {
         return () -> {
-            runStep(userTask, plan, step, out);
+            runStep(userTask, plan, step, taskSkillContext, out);
             return null;
         };
     }
 
-    private void runStep(String userTask, ExecutionPlan plan, ExecutionStep step, PrintStream out) {
+    private void runStep(
+        String userTask,
+        ExecutionPlan plan,
+        ExecutionStep step,
+        String taskSkillContext,
+        PrintStream out
+    ) {
         String feedback = step.error();
         while (true) {
             step.markStarted();
@@ -212,6 +288,7 @@ public class AgentOrchestrator implements AutoCloseable {
                     userTask,
                     buildStepContext(plan),
                     feedback,
+                    skillContextSupplier.get(),
                     out
                 );
                 if (result.type() == AgentMessage.Type.ERROR) {
@@ -247,10 +324,11 @@ public class AgentOrchestrator implements AutoCloseable {
         String userTask,
         ExecutionPlan plan,
         List<ExecutionStep> executableSteps,
+        String taskSkillContext,
         PrintStream out
     ) {
         List<Callable<Void>> callables = executableSteps.stream()
-            .map(step -> runStepTask(userTask, plan, step, out))
+            .map(step -> runStepTask(userTask, plan, step, taskSkillContext, out))
             .toList();
         try {
             List<Future<Void>> futures = executorService.invokeAll(

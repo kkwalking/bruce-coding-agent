@@ -44,12 +44,22 @@ public class ToolRegistry {
     private final Path workspaceRoot;
 
     public ToolRegistry(Path workspaceRoot) {
+        this(workspaceRoot, true);
+    }
+
+    private ToolRegistry(Path workspaceRoot, boolean registerBuiltIns) {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
 
-        // 按类别注册工具：文件、命令、代码项目创建。
-        registerFileTools();
-        registerShellTools();
-        registerCodeTools();
+        if (registerBuiltIns) {
+            // 按类别注册工具：文件、命令、代码项目创建。
+            registerFileTools();
+            registerShellTools();
+            registerCodeTools();
+        }
+    }
+
+    public static ToolRegistry empty(Path workspaceRoot) {
+        return new ToolRegistry(workspaceRoot, false);
     }
 
     /**

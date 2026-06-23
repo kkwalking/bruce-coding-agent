@@ -27,10 +27,23 @@ public class PlanAndExecuteAgent {
     }
 
     public PlanExecutionReport run(String userGoal, String supplementalContext) throws IOException {
-        ExecutionPlan plan = planner.plan(userGoal, supplementalContext);
+        return run(userGoal, supplementalContext, "");
+    }
+
+    public PlanExecutionReport run(
+        String userGoal,
+        String supplementalContext,
+        String taskSystemContext
+    ) throws IOException {
+        ExecutionPlan plan = planner.plan(userGoal, supplementalContext, taskSystemContext);
         List<String> errors = planValidator.validatePlan(plan);
         if (!errors.isEmpty()) {
-            plan = planner.replan(plan, "计划校验失败: " + String.join("; ", errors));
+            plan = planner.replan(
+                plan,
+                "计划校验失败: " + String.join("; ", errors),
+                supplementalContext,
+                taskSystemContext
+            );
         }
 
         PlanExecutionReport report = executor.execute(plan);
@@ -38,7 +51,9 @@ public class PlanAndExecuteAgent {
             // 对应文章“规划的自我修正”：失败较多时，把失败上下文交回 Planner，重新生成一版计划再执行。
             ExecutionPlan replanned = planner.replan(
                 report.plan(),
-                "执行成功率低于 50%，成功率=" + report.successRate()
+                "执行成功率低于 50%，成功率=" + report.successRate(),
+                supplementalContext,
+                taskSystemContext
             );
             return executor.execute(replanned);
         }

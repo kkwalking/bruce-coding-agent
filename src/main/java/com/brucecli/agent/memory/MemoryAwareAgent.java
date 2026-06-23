@@ -9,6 +9,7 @@ import com.brucecli.llm.ToolCall;
 import com.brucecli.memory.core.MemoryContext;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.tool.ToolRegistry;
+import com.brucecli.skill.SkillToolRegistrar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,12 +128,19 @@ public class MemoryAwareAgent {
     }
 
     public String run(String userInput) throws IOException {
+        return run(userInput, "");
+    }
+
+    public String run(String userInput, String taskSystemContext) throws IOException {
         MemoryContext memoryContext = memoryManager.buildContext(userInput);
         memoryManager.rememberUserMessage(userInput);
 
         List<Message> workingMessages = new ArrayList<>();
         workingMessages.add(Message.system(systemPrompt));
         workingMessages.add(Message.system(memoryContext.prompt()));
+        if (taskSystemContext != null && !taskSystemContext.isBlank()) {
+            workingMessages.add(Message.system(taskSystemContext));
+        }
         workingMessages.add(Message.user(userInput));
 
         for (int i = 0; i < maxIterations; i++) {
@@ -153,7 +161,12 @@ public class MemoryAwareAgent {
                 logger.info("[MemoryAgent] 工具 {} 完成，结果: {}", toolName, toolResult.result());
 
                 workingMessages.add(Message.tool(toolCall.id(), toolResult.result()));
-                memoryManager.rememberToolResult(toolName, toolResult.result());
+                memoryManager.rememberToolResult(
+                    toolName,
+                    SkillToolRegistrar.isSkillTool(toolName)
+                        ? "[Skill 内容仅对当前任务有效，未写入 Memory]"
+                        : toolResult.result()
+                );
             }
         }
 

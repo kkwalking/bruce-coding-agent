@@ -9,6 +9,7 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 - SQLite + Embedding 代码 RAG
 - WebSearch + WebFetch 联网搜索与网页抓取
 - MCP stdio / Streamable HTTP 工具接入
+- Bruce Agent Skills 渐进式工作流加载
 - HITL 人工审批
 - ReAct、Plan、Multi-Agent 并行执行
 
@@ -68,6 +69,12 @@ java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 /mcp disable <name>
 /mcp enable <name>
 
+/skill list
+/skill show <name>
+/skill reload
+
+$code-reviewer 审查当前代码变更
+
 /hitl on|off|status
 /parallel on|off|status
 
@@ -78,6 +85,46 @@ java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 ```
 
 默认状态：ReAct、Memory、Web、HITL 和 Parallel 开启，RAG 关闭。
+
+## Agent Skills
+
+Bruce CLI 会扫描两级 Skill 目录：
+
+```text
+~/.brucecli/skills/<skill-name>/SKILL.md
+<项目目录>/.brucecli/skills/<skill-name>/SKILL.md
+```
+
+同名 Skill 由项目级覆盖用户级。`SKILL.md` 使用包含 `name` 和
+`description` 的 YAML frontmatter：
+
+```markdown
+---
+name: java-review
+description: 当需要审查 Java 代码质量和 Maven 项目结构时使用。
+---
+
+先检查构建配置，再检查源码边界和测试覆盖。
+需要详细清单时读取 references/checklist.md。
+```
+
+普通任务只会先获得 Skill 的名称和描述目录。主 Agent 判断任务与某个 Skill
+匹配时，会调用 `load_skill` 获取完整指令，再继续执行；不会为每条请求额外
+调用一次选择模型。
+
+也可以在同一条输入开头显式指定最多 3 个 Skill：
+
+```text
+$java-review 审查当前 Git 变更
+$java-review $security-review 审查登录模块
+```
+
+显式前缀只对当前任务生效，Agent 实际收到的任务正文不包含 `$skill` 前缀。
+
+Skill 可以携带 `references/`、`templates/` 等只读资源。Agent 通过
+`load_skill` 激活 Skill 后，再通过 `read_skill_resource` 按需读取。路径
+必须位于对应 Skill 目录内，单次输出最多 12,000 字符。首版不会执行 Skill
+中的脚本。
 
 ## 联网搜索配置
 
@@ -159,6 +206,7 @@ src/main/java/com/brucecli/
 ├── rag/            代码索引和混合检索
 ├── web/            联网搜索 Provider、网页抓取与正文提取
 ├── mcp/            MCP 配置、协议客户端、stdio/HTTP 传输和工具注册
+├── skill/          Skill 扫描、选择、资源读取和任务级激活
 ├── approval/       HITL 审批
 ├── runtime/        运行时并发配置与线程工厂
 └── integrated/     统一运行时与 CLI

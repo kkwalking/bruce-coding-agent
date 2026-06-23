@@ -17,6 +17,7 @@ public record RuntimeStatus(
     int maxParallelism,
     Duration batchTimeout,
     boolean ragIndexed,
+    int skillCount,
     List<String> toolNames
 ) {
     public String toDisplayString() {
@@ -30,6 +31,7 @@ public record RuntimeStatus(
             MCP: %s
             HITL: %s
             Parallel: %s
+            Skills: %s
             Tools: %s
             """.formatted(
                 mode,
@@ -43,6 +45,7 @@ public record RuntimeStatus(
                 parallelEnabled
                     ? "开启 (max=" + maxParallelism + ", timeout=" + batchTimeout.toSeconds() + "s)"
                     : "关闭",
+                skillCount + " 个",
                 String.join(", ", toolNames)
             );
     }
