@@ -1,22 +1,66 @@
 package com.brucecli.memory.core;
 
 import com.brucecli.memory.model.MemoryEntry;
+import com.brucecli.memory.model.MemoryType;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConversationMemoryTest {
     @Test
-    void evictsOldestEntriesIntoPendingCompressionWhenBudgetExceeded() {
-        ConversationMemory memory = new ConversationMemory(20);
+    void movesOldestEntriesIntoPendingCompressionWhenThresholdReached() {
+        ConversationMemory memory = new ConversationMemory(100, 2, 0.80);
 
-        memory.store(MemoryEntry.conversation("user", "第一条消息，内容比较长，需要占用不少 token"));
-        memory.store(MemoryEntry.conversation("assistant", "第二条消息，也比较长，用来触发预算淘汰"));
-        memory.store(MemoryEntry.conversation("user", "第三条消息继续撑大上下文"));
+        memory.store(entry("first", 30));
+        memory.store(entry("second", 30));
+        memory.store(entry("third", 20));
 
-        assertTrue(memory.currentTokens() <= memory.maxTokens());
+        assertEquals(50, memory.currentTokens());
+        assertEquals(2, memory.entries().size());
         assertTrue(memory.hasPendingCompression());
-        assertFalse(memory.drainPendingCompression().isEmpty());
+        assertEquals("first", memory.drainPendingCompression().get(0).id());
+    }
+
+    @Test
+    void keepsRecentEntriesEvenWhenThresholdIsStillExceeded() {
+        ConversationMemory memory = new ConversationMemory(100, 3, 0.80);
+
+        memory.store(entry("first", 30));
+        memory.store(entry("second", 30));
+        memory.store(entry("third", 30));
+
+        assertEquals(90, memory.currentTokens());
+        assertEquals(3, memory.entries().size());
+        assertFalse(memory.hasPendingCompression());
+    }
+
+    @Test
+    void defaultConstructorUsesCompressionThresholdBeforeFullBudget() {
+        ConversationMemory memory = new ConversationMemory(100);
+
+        memory.store(entry("first", 20));
+        memory.store(entry("second", 20));
+        memory.store(entry("third", 20));
+        memory.store(entry("fourth", 20));
+
+        assertEquals(60, memory.currentTokens());
+        assertEquals(3, memory.entries().size());
+        assertTrue(memory.hasPendingCompression());
+    }
+
+    private static MemoryEntry entry(String id, int tokenCount) {
+        return new MemoryEntry(
+            id,
+            "entry " + id,
+            MemoryType.CONVERSATION,
+            Instant.now(),
+            Map.of("role", "user"),
+            tokenCount
+        );
     }
 }

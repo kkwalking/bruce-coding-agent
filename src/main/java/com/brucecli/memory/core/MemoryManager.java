@@ -5,7 +5,6 @@ import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.memory.model.MemoryType;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -20,16 +19,16 @@ import java.util.stream.Collectors;
 public class MemoryManager {
     private static final int DEFAULT_RELEVANT_LIMIT = 5;
     private static final int DEFAULT_RECENT_LIMIT = 8;
-    private static final int DEFAULT_KEEP_RECENT_AFTER_COMPRESSION = 3;
-    private static final double DEFAULT_COMPRESSION_THRESHOLD = 0.80;
+    private static final int DEFAULT_KEEP_RECENT_AFTER_COMPRESSION =
+        ConversationMemory.DEFAULT_KEEP_RECENT_AFTER_COMPRESSION;
+    private static final double DEFAULT_COMPRESSION_THRESHOLD =
+        ConversationMemory.DEFAULT_COMPRESSION_THRESHOLD;
 
     private final ConversationMemory conversationMemory;
     private final LongTermMemory longTermMemory;
     private final ContextCompressor compressor;
     private final int relevantLimit;
     private final int recentLimit;
-    private final int keepRecentAfterCompression;
-    private final double compressionThreshold;
     private int contextBuildCount;
     private int lastContextTokens;
     private int lastRelevantLongTermEntries;
@@ -68,8 +67,7 @@ public class MemoryManager {
         this.compressor = compressor;
         this.relevantLimit = relevantLimit;
         this.recentLimit = recentLimit;
-        this.keepRecentAfterCompression = keepRecentAfterCompression;
-        this.compressionThreshold = compressionThreshold;
+        this.conversationMemory.configureCompression(keepRecentAfterCompression, compressionThreshold);
     }
 
     public void rememberUserMessage(String content) {
@@ -153,18 +151,11 @@ public class MemoryManager {
     }
 
     private boolean shouldCompress() {
-        return conversationMemory.hasPendingCompression()
-            || conversationMemory.getUsageRatio() >= compressionThreshold;
+        return conversationMemory.hasPendingCompression();
     }
 
     public void compressIfNeeded() throws IOException {
-        List<MemoryEntry> candidates = new ArrayList<>();
-        candidates.addAll(conversationMemory.drainPendingCompression());
-
-        if (conversationMemory.getUsageRatio() >= compressionThreshold) {
-            candidates.addAll(conversationMemory.removeOldestButKeep(keepRecentAfterCompression));
-        }
-
+        List<MemoryEntry> candidates = conversationMemory.drainPendingCompression();
         if (candidates.isEmpty()) {
             return;
         }

@@ -12,21 +12,42 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 短期记忆。
  *
  * <p>短期记忆跟着当前进程和当前会话走，负责保存最近的对话上下文。
- * 它的关键约束是 maxTokens：一旦超过预算，就按 FIFO 淘汰最旧条目。
- * 被淘汰的内容不会直接丢掉，而是进入 pendingCompression，等待 MemoryManager 压缩成摘要。</p>
+ * 它的关键约束是 maxTokens 和 compressionThreshold：一旦使用率达到压缩阈值，
+ * 就按 FIFO 把最旧条目移入 pendingCompression，等待 MemoryManager 压缩成摘要。</p>
  */
 public class ConversationMemory {
+    public static final int DEFAULT_KEEP_RECENT_AFTER_COMPRESSION = 3;
+    public static final double DEFAULT_COMPRESSION_THRESHOLD = 0.80;
+
     private final LinkedHashMap<String, MemoryEntry> entries = new LinkedHashMap<>();
     private final int maxTokens;
     private final AtomicInteger currentTokens = new AtomicInteger();
     private final List<MemoryEntry> pendingCompression = new ArrayList<>();
     private final List<MemoryEntry> compressedSummaries = new ArrayList<>();
+    private int keepRecentAfterCompression;
+    private double compressionThreshold;
 
     public ConversationMemory(int maxTokens) {
+        this(maxTokens, DEFAULT_KEEP_RECENT_AFTER_COMPRESSION, DEFAULT_COMPRESSION_THRESHOLD);
+    }
+
+    public ConversationMemory(int maxTokens, int keepRecentAfterCompression, double compressionThreshold) {
         if (maxTokens <= 0) {
             throw new IllegalArgumentException("maxTokens 必须大于 0");
         }
         this.maxTokens = maxTokens;
+        configureCompression(keepRecentAfterCompression, compressionThreshold);
+    }
+
+    public synchronized void configureCompression(int keepRecentAfterCompression, double compressionThreshold) {
+        if (keepRecentAfterCompression < 1) {
+            throw new IllegalArgumentException("keepRecentAfterCompression 必须大于 0");
+        }
+        if (compressionThreshold <= 0 || compressionThreshold > 1) {
+            throw new IllegalArgumentException("compressionThreshold 必须在 (0, 1] 范围内");
+        }
+        this.keepRecentAfterCompression = keepRecentAfterCompression;
+        this.compressionThreshold = compressionThreshold;
     }
 
     public synchronized void store(MemoryEntry entry) {
@@ -36,8 +57,14 @@ public class ConversationMemory {
         }
         currentTokens.addAndGet(entry.tokenCount());
 
-        // 超出预算时自动淘汰最旧的条目。
-        while (currentTokens.get() > maxTokens && entries.size() > 1) {
+        moveOldestToPendingWhenThresholdReached();
+    }
+
+    private void moveOldestToPendingWhenThresholdReached() {
+        while (
+            getUsageRatio() >= compressionThreshold
+                && entries.size() > keepRecentAfterCompression
+        ) {
             evictOldest();
         }
     }
@@ -101,17 +128,6 @@ public class ConversationMemory {
     public synchronized void addCompressedSummary(MemoryEntry summary) {
         compressedSummaries.add(summary);
         store(summary);
-    }
-
-    /**
-     * 主动压缩时使用：保留最近 keepCount 条，移出更早的历史。
-     */
-    public synchronized List<MemoryEntry> removeOldestButKeep(int keepCount) {
-        List<MemoryEntry> removed = new ArrayList<>();
-        while (entries.size() > keepCount) {
-            removed.add(evictOldest());
-        }
-        return removed;
     }
 
     private MemoryEntry evictOldest() {
