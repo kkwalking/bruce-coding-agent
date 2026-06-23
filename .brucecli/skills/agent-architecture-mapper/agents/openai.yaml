@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Architecture Mapper"
+  short_description: "Map Bruce agent runtime architecture and data flow."
+  default_prompt: "Use agent-architecture-mapper to explain the Bruce CLI agent architecture and data flow."
