@@ -132,9 +132,8 @@ public class Agent {
                     for (ToolCallResult toolResult : toolCallExecutor.execute(response.toolCalls())) {
                         ToolCall toolCall = toolResult.toolCall();
                         logger.info(
-                            "[Agent] 工具 {} 完成，结果: {}",
-                            toolCall.function().name(),
-                            toolResult.result()
+                            "[Agent] 工具 {} 完成。",
+                            toolCall.function().name()
                         );
 
                         // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
