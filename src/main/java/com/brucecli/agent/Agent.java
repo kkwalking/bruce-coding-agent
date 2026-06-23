@@ -28,7 +28,7 @@ public class Agent {
     private static final Logger logger = LoggerFactory.getLogger(Agent.class);
 
     // 防止模型反复调用工具导致无限循环。真实生产系统通常还会加 token、时间、费用等限制。
-    private static final int DEFAULT_MAX_ITERATIONS = 20;
+    private static final int DEFAULT_MAX_ITERATIONS = 40;
 
     // 网络抖动时允许短暂重试，避免一次 IOException 直接中断任务。
     private static final int MAX_RETRIES = 2;
