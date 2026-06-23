@@ -288,7 +288,7 @@ public class AgentOrchestrator implements AutoCloseable {
                     userTask,
                     buildStepContext(plan),
                     feedback,
-                    skillContextSupplier.get(),
+                    joinContext(taskSkillContext, skillContextSupplier.get()),
                     out
                 );
                 if (result.type() == AgentMessage.Type.ERROR) {

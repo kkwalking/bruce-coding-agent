@@ -15,6 +15,7 @@ import java.io.PrintStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.Executors;
@@ -123,6 +124,58 @@ class AgentOrchestratorTest {
         }
     }
 
+    @Test
+    void workerReceivesTaskSkillContextWithoutSupplier() {
+        QueueChatClient fakeClient = new QueueChatClient(
+            text("""
+                {
+                  "goal": "执行 Skill 任务",
+                  "steps": [
+                    {
+                      "id": "step_1",
+                      "description": "按 Skill 执行",
+                      "type": "GENERAL",
+                      "dependencies": []
+                    }
+                  ]
+                }
+                """),
+            text("worker result"),
+            text("""
+                {
+                  "approved": true,
+                  "summary": "通过",
+                  "issues": [],
+                  "suggestions": []
+                }
+                """)
+        );
+
+        try (AgentOrchestrator orchestrator = new AgentOrchestrator(
+            fakeClient,
+            new ToolRegistry(Path.of(".")),
+            null,
+            1,
+            0,
+            "",
+            Duration.ofSeconds(30),
+            Executors.defaultThreadFactory()
+        )) {
+            MultiAgentResult result = orchestrator.execute(
+                "执行 Skill 任务",
+                "",
+                "TASK_SKILL_INSTRUCTION",
+                quiet()
+            );
+
+            assertTrue(result.success());
+            assertTrue(fakeClient.allMessages.get(1).stream().anyMatch(message ->
+                "system".equals(message.role())
+                    && message.content().contains("TASK_SKILL_INSTRUCTION")
+            ));
+        }
+    }
+
     private static PrintStream quiet() {
         return new PrintStream(OutputStream.nullOutputStream());
     }
@@ -133,6 +186,7 @@ class AgentOrchestratorTest {
 
     private static class QueueChatClient implements ChatClient {
         private final Queue<ChatResponse> responses = new ArrayDeque<>();
+        private final List<List<Message>> allMessages = new ArrayList<>();
 
         QueueChatClient(ChatResponse... responses) {
             this.responses.addAll(List.of(responses));
@@ -140,6 +194,7 @@ class AgentOrchestratorTest {
 
         @Override
         public synchronized ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) throws IOException {
+            allMessages.add(List.copyOf(messages));
             ChatResponse response = responses.poll();
             if (response == null) {
                 throw new IOException("没有配置更多模型响应");
