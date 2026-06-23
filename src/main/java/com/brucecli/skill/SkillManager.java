@@ -69,7 +69,7 @@ public class SkillManager {
             return "";
         }
         StringBuilder builder = new StringBuilder("""
-            可用 Bruce Skills（当前仅提供名称和描述）：
+            可用 Skills（当前仅提供名称和描述）：
             当用户任务与某个 Skill 描述匹配时，先调用 load_skill(name) 加载完整指令，再继续任务。
             不要凭名称猜测 Skill 内容；未调用 load_skill 的 Skill 不算已激活。
             """);

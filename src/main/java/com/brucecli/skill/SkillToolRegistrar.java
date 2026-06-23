@@ -27,7 +27,7 @@ public final class SkillToolRegistrar {
         loadParameters.putArray("required").add("name");
         registry.register(new Tool(
             LOAD_TOOL_NAME,
-            "加载一个 Bruce Skill 的完整工作流指令；仅当用户任务与 Skill 描述匹配时调用",
+            "加载一个 Skill 的完整工作流指令；仅当用户任务与 Skill 描述匹配时调用",
             loadParameters,
             args -> manager.loadSkill(args.get("name"))
         ));

@@ -32,7 +32,10 @@ class SkillManagerTest {
         String catalog = manager.catalogPrompt();
 
         assertTrue(catalog.length() <= 8_000);
+        assertTrue(catalog.contains("可用 Skills"));
+        assertTrue(catalog.contains("load_skill"));
         assertTrue(catalog.contains("skill-0"));
+        assertFalse(catalog.contains("Bruce"));
         assertFalse(catalog.contains("SECRET_INSTRUCTION"));
     }
 

@@ -157,6 +157,13 @@ class IntegratedRuntimeTest {
                 "system".equals(message.role())
                     && message.content().contains("UNIQUE_REVIEW_INSTRUCTION")
             ));
+            String firstPrompt = renderMessages(chatClient.allMessages.get(0));
+            assertFalse(firstPrompt.contains("Bruce Skill"));
+            assertFalse(firstPrompt.contains("Bruce Skills"));
+            assertFalse(firstPrompt.contains("Bruce CLI 使用渐进式 Skill"));
+            assertTrue(firstPrompt.contains("Skills provide task-specific instructions."));
+            assertTrue(firstPrompt.contains("可用 Skills"));
+            assertSkillToolDefinitionsAreBrandNeutral(chatClient.allTools.get(0));
             assertTrue(chatClient.allMessages.get(0).stream().anyMatch(message ->
                 "user".equals(message.role()) && "第一次任务".equals(message.content())
             ));
@@ -169,6 +176,26 @@ class IntegratedRuntimeTest {
             assertTrue(secondAgentMessages.stream().anyMatch(message ->
                 "system".equals(message.role()) && message.content().contains("java-review")
             ));
+        }
+    }
+
+    private static String renderMessages(List<Message> messages) {
+        return messages.stream()
+            .map(Message::content)
+            .filter(content -> content != null)
+            .reduce("", (left, right) -> left + "\n" + right);
+    }
+
+    private static void assertSkillToolDefinitionsAreBrandNeutral(List<ToolDefinition> tools) {
+        List<ToolDefinition> skillTools = tools.stream()
+            .filter(tool -> tool.name().equals("load_skill") || tool.name().equals("read_skill_resource"))
+            .toList();
+        assertEquals(2, skillTools.size());
+        for (ToolDefinition tool : skillTools) {
+            assertFalse(tool.description().contains("Bruce Skill"));
+            assertFalse(tool.description().contains("Bruce Skills"));
+            assertFalse(tool.description().contains("Bruce"));
+            assertFalse(tool.parameters().toString().contains("Bruce"));
         }
     }
 
