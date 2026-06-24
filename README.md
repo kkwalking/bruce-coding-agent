@@ -18,18 +18,20 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 
 - JDK 17+
 - Maven 3.9+
-- DeepSeek API Key，或其他 OpenAI-compatible LLM API Key
-- 可选：智谱 GLM API Key，用于联网搜索（`GLM_API_KEY`，不复用 `DEEPSEEK_API_KEY`）
-- 可选：智谱 GLM-5V，用于图片输入（可配置 `LLM_MODEL=glm-5v` 并复用 `GLM_API_KEY`）
+- 显式配置 `LLM_PROVIDER=deepseek`、`LLM_PROVIDER=glm` 或 `LLM_PROVIDER=openai_compatiable`
+- DeepSeek/GLM 使用厂商变量：`DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` 或 `GLM_API_KEY` / `GLM_MODEL`
+- 通用 OpenAI-compatible provider 使用 `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`
+- 可选：智谱 GLM API Key，用于联网搜索（`GLM_API_KEY`）
+- 可选：智谱 GLM-5V，用于图片输入（配置 `LLM_PROVIDER=glm`、`GLM_MODEL=glm-5v`）
 - 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置
 
 ## 构建与运行
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入 DEEPSEEK_API_KEY
+# 编辑 .env，设置 LLM_PROVIDER 并填入对应 API Key / Model
 # 如需联网搜索，额外填入 GLM_API_KEY
-# 如需图片输入，配置支持视觉的 LLM，例如 GLM-5V
+# 如需图片输入，配置 LLM_PROVIDER=glm 和 GLM_MODEL=glm-5v
 
 mvn clean test
 mvn package
@@ -105,21 +107,23 @@ ReAct 模式支持在用户输入中附加图片：
 @image:<file:///Users/bruce/Desktop/path with spaces.png>
 ```
 
-默认 DeepSeek 文本模型不一定支持视觉输入。可以通过通用 LLM 配置切换到支持图片的
-OpenAI-compatible 模型：
+默认 DeepSeek 文本模型不一定支持视觉输入。可以显式切换到 GLM provider 和
+支持图片的模型：
 
 ```env
-LLM_MODEL=glm-5v
+LLM_PROVIDER=glm
 GLM_API_KEY=your_glm_api_key_here
-# 可选；glm-* 模型默认会使用这个地址
-# LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
+GLM_MODEL=glm-5v
 ```
 
-也可以继续使用旧配置名：
+如需连接其他 OpenAI-compatible 服务，可使用固定 provider 值
+`openai_compatiable`：
 
 ```env
-DEEPSEEK_API_KEY=your_api_key_here
-DEEPSEEK_MODEL=deepseek-v4-flash
+LLM_PROVIDER=openai_compatiable
+LLM_API_KEY=your_api_key_here
+LLM_MODEL=your_model_name_here
+LLM_BASE_URL=http://localhost:9000/v1
 ```
 
 图片会先预处理为 data URL：小图直通，透明 PNG 会铺白底，超大图片会等比缩放并压缩，

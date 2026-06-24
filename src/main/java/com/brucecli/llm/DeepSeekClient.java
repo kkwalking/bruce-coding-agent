@@ -14,26 +14,25 @@ import java.util.concurrent.TimeUnit;
  * 这里仅保留 DeepSeek 的默认模型、endpoint 和少量请求差异。</p>
  */
 public class DeepSeekClient extends OpenAiCompatibleChatClient {
-    public static final String DEFAULT_API_URL = "https://api.deepseek.com/chat/completions";
+    public static final String DEFAULT_BASE_URL = "https://api.deepseek.com";
+    public static final String DEFAULT_API_URL = DEFAULT_BASE_URL + "/chat/completions";
     public static final String DEFAULT_MODEL = "deepseek-v4-flash";
 
     public DeepSeekClient(String apiKey, String model) {
-        this(apiKey, model, (String) null);
-    }
-
-    public DeepSeekClient(String apiKey, String model, String apiUrl) {
-        this(apiKey, model, apiUrl, defaultDeepSeekHttpClient());
+        this(apiKey, model, defaultDeepSeekHttpClient());
     }
 
     DeepSeekClient(String apiKey, String model, OkHttpClient httpClient) {
-        this(apiKey, model, null, httpClient);
+        this(apiKey, model, DEFAULT_API_URL, httpClient);
     }
 
-    DeepSeekClient(String apiKey, String model, String apiUrl, OkHttpClient httpClient) {
+    DeepSeekClient(String apiKey, String model, String apiUrlOverride, OkHttpClient httpClient) {
         super(
             apiKey,
             model == null || model.isBlank() ? DEFAULT_MODEL : model,
-            apiUrl == null || apiUrl.isBlank() ? DEFAULT_API_URL : toChatCompletionsUrl(apiUrl),
+            apiUrlOverride == null || apiUrlOverride.isBlank()
+                ? DEFAULT_API_URL
+                : toChatCompletionsUrl(apiUrlOverride),
             httpClient
         );
     }

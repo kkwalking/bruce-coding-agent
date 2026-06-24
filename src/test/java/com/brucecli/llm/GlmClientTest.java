@@ -27,13 +27,6 @@ class GlmClientTest {
     }
 
     @Test
-    void customApiUrlOverridesDefaultEndpoint() {
-        GlmClient client = new GlmClient("key", "glm-5v", "http://127.0.0.1:7777/v1");
-
-        assertEquals("http://127.0.0.1:7777/v1/chat/completions", client.apiUrl);
-    }
-
-    @Test
     void glm5vSendsRawBase64ImageUrl() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
