@@ -36,7 +36,7 @@ class DeepSeekClientTest {
         try {
             DeepSeekClient client = new DeepSeekClient(
                 "test-key",
-                "glm-5v",
+                "deepseek-v4-flash",
                 "http://127.0.0.1:" + server.getAddress().getPort(),
                 new OkHttpClient()
             );
@@ -55,7 +55,7 @@ class DeepSeekClientTest {
             assertEquals("帮我分析下这张截图", content.get(0).path("text").asText());
             assertEquals("image_url", content.get(1).path("type").asText());
             assertEquals("data:image/png;base64,AAAA", content.get(1).path("image_url").path("url").asText());
-            assertFalse(root.has("thinking"));
+            assertTrue(root.has("thinking"));
         } finally {
             server.stop(0);
         }

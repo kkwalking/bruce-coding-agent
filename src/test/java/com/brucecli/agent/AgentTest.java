@@ -2,8 +2,10 @@ package com.brucecli.agent;
 
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
+import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.FunctionCall;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.llm.ToolDefinition;
 import com.brucecli.tool.ToolCallExecutor;
@@ -15,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 
@@ -53,6 +56,41 @@ class AgentTest {
         assertEquals("Hello BruceCLI", Files.readString(tempDir.resolve("demo.txt")));
     }
 
+    @Test
+    void prunesHistoricalImageContentBeforeNextModelCall() {
+        RecordingChatClient chatClient = new RecordingChatClient(
+            new ChatResponse("第一张已处理。", List.of()),
+            new ChatResponse("第二张已处理。", List.of())
+        );
+        Agent agent = new Agent(
+            chatClient,
+            ToolRegistry.empty(tempDir),
+            "",
+            toolCalls -> List.of()
+        );
+
+        agent.run(PreparedUserInput.multimodal(List.of(
+            ContentPart.text("第一张"),
+            ContentPart.imageUrl("data:image/png;base64,OLD", "[已附加图片: old.png]")
+        )), "");
+        agent.run(PreparedUserInput.multimodal(List.of(
+            ContentPart.text("第二张"),
+            ContentPart.imageUrl("data:image/png;base64,NEW", "[已附加图片: new.png]")
+        )), "");
+
+        List<Message> secondCallMessages = chatClient.calls.get(1);
+        long imageMessageCount = secondCallMessages.stream()
+            .filter(Message::hasImageContent)
+            .count();
+        assertEquals(1, imageMessageCount);
+        assertTrue(secondCallMessages.stream().anyMatch(message ->
+            message.content() != null && message.content().contains("历史图片内容已移除")
+        ));
+        assertTrue(secondCallMessages.stream().anyMatch(message ->
+            message.hasImageContent() && message.content().contains("第二张")
+        ));
+    }
+
     /**
      * 测试用的假模型客户端。
      *
@@ -68,6 +106,25 @@ class AgentTest {
 
         @Override
         public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) throws IOException {
+            ChatResponse response = responses.poll();
+            if (response == null) {
+                throw new IOException("no queued response");
+            }
+            return response;
+        }
+    }
+
+    private static class RecordingChatClient implements ChatClient {
+        private final Queue<ChatResponse> responses = new ArrayDeque<>();
+        private final List<List<Message>> calls = new ArrayList<>();
+
+        RecordingChatClient(ChatResponse... responses) {
+            this.responses.addAll(List.of(responses));
+        }
+
+        @Override
+        public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) throws IOException {
+            calls.add(List.copyOf(messages));
             ChatResponse response = responses.poll();
             if (response == null) {
                 throw new IOException("no queued response");

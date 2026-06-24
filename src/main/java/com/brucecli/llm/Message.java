@@ -14,16 +14,28 @@ import java.util.List;
 public record Message(
     String role,
     String content,
+    String reasoningContent,
     List<ToolCall> toolCalls,
     String toolCallId,
     List<ContentPart> contentParts
 ) {
     public Message(String role, String content, List<ToolCall> toolCalls, String toolCallId) {
-        this(role, content, toolCalls, toolCallId, null);
+        this(role, content, null, toolCalls, toolCallId, null);
+    }
+
+    public Message(
+        String role,
+        String content,
+        List<ToolCall> toolCalls,
+        String toolCallId,
+        List<ContentPart> contentParts
+    ) {
+        this(role, content, null, toolCalls, toolCallId, contentParts);
     }
 
     public Message {
         // record 默认只是保存引用，这里复制一份，避免外部修改历史消息里的工具调用列表。
+        reasoningContent = reasoningContent == null ? "" : reasoningContent;
         toolCalls = toolCalls == null ? null : List.copyOf(toolCalls);
         contentParts = contentParts == null ? null : List.copyOf(contentParts);
     }
@@ -62,6 +74,10 @@ public record Message(
         return new Message("assistant", content, null, null);
     }
 
+    public static Message assistant(String reasoningContent, String content) {
+        return new Message("assistant", content, reasoningContent, null, null, null);
+    }
+
     /**
      * 带工具调用的模型回复。
      *
@@ -70,6 +86,10 @@ public record Message(
      */
     public static Message assistant(String content, List<ToolCall> toolCalls) {
         return new Message("assistant", content == null ? "" : content, toolCalls, null);
+    }
+
+    public static Message assistant(String reasoningContent, String content, List<ToolCall> toolCalls) {
+        return new Message("assistant", content == null ? "" : content, reasoningContent, toolCalls, null, null);
     }
 
     /**
@@ -83,6 +103,46 @@ public record Message(
 
     public boolean hasContentParts() {
         return contentParts != null && !contentParts.isEmpty();
+    }
+
+    public boolean hasImageContent() {
+        return imagePartCount() > 0;
+    }
+
+    public int imagePartCount() {
+        if (!hasContentParts()) {
+            return 0;
+        }
+        int count = 0;
+        for (ContentPart part : contentParts) {
+            if (part != null && part.isImage()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public Message withoutImageContent() {
+        if (!hasImageContent()) {
+            return this;
+        }
+        return new Message(
+            role,
+            content == null || content.isBlank()
+                ? "[历史图片内容已移除，仅保留文字占位]"
+                : content + "\n[历史图片内容已移除，仅保留文字占位]",
+            reasoningContent,
+            toolCalls,
+            toolCallId,
+            List.of(ContentPart.text("[历史图片内容已移除，仅保留文字占位]"))
+        );
+    }
+
+    public Message withoutReasoningContent() {
+        if (reasoningContent == null || reasoningContent.isBlank()) {
+            return this;
+        }
+        return new Message(role, content, "", toolCalls, toolCallId, contentParts);
     }
 
     private static String plainText(List<ContentPart> parts) {

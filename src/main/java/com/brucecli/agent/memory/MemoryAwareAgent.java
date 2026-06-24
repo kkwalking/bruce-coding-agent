@@ -6,6 +6,7 @@ import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.MessageHistoryPruner;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.memory.core.MemoryContext;
@@ -151,6 +152,7 @@ public class MemoryAwareAgent {
         workingMessages.add(preparedInput.message());
 
         for (int i = 0; i < maxIterations; i++) {
+            MessageHistoryPruner.retainLatestImageMessage(workingMessages);
             ChatResponse response = chatClient.chat(workingMessages, toolRegistry.getToolDefinitions());
 
             if (!response.hasToolCalls()) {
@@ -159,7 +161,11 @@ public class MemoryAwareAgent {
                 return answer;
             }
 
-            workingMessages.add(Message.assistant(response.content(), response.toolCalls()));
+            workingMessages.add(Message.assistant(
+                response.reasoningContent(),
+                response.content(),
+                response.toolCalls()
+            ));
             memoryManager.rememberAssistantMessage("模型请求调用工具: " + renderToolNames(response.toolCalls()));
 
             List<ToolCallResult> toolResults = toolCallBatchExecutor.execute(response.toolCalls());

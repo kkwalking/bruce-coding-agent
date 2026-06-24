@@ -4,6 +4,7 @@ import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.MessageHistoryPruner;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.agent.multi.model.AgentMessage;
 import com.brucecli.agent.multi.model.AgentRole;
@@ -186,6 +187,7 @@ public class SubAgent {
             for (int iteration = 1; iteration <= maxIterations; iteration++) {
                 ChatResponse response;
                 try {
+                    MessageHistoryPruner.retainLatestImageMessage(chatHistory);
                     response = llmClient.chat(chatHistory, tools);
                 } catch (IOException e) {
                     return AgentMessage.error(name, role, "LLM 调用失败: " + e.getMessage());
@@ -194,7 +196,11 @@ public class SubAgent {
                 }
 
                 if (allowTools && response.hasToolCalls()) {
-                    chatHistory.add(Message.assistant(response.content(), response.toolCalls()));
+                    chatHistory.add(Message.assistant(
+                        response.reasoningContent(),
+                        response.content(),
+                        response.toolCalls()
+                    ));
                     for (ToolCall toolCall : response.toolCalls()) {
                         String toolName = toolCall.function().name();
                         String arguments = toolCall.function().arguments();
@@ -211,7 +217,7 @@ public class SubAgent {
                     continue;
                 }
 
-                chatHistory.add(Message.assistant(response.content()));
+                chatHistory.add(Message.assistant(response.reasoningContent(), response.content()));
                 return new AgentMessage(name, role, response.content(), resultType);
             }
             return AgentMessage.error(name, role, "达到最大迭代次数限制: " + maxIterations);

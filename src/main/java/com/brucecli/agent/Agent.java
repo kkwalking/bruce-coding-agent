@@ -4,6 +4,7 @@ import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.MessageHistoryPruner;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.tool.ToolCallExecutor;
@@ -119,6 +120,7 @@ public class Agent {
 
                 ChatResponse response;
                 try {
+                    MessageHistoryPruner.retainLatestImageMessage(conversationHistory);
                     // 每次都发送完整历史和完整工具清单，让模型可以基于之前的观察继续行动。
                     response = llmClient.chat(conversationHistory, toolRegistry.getToolDefinitions());
                     retryCount = 0;
@@ -135,7 +137,11 @@ public class Agent {
 
                 if (response.hasToolCalls()) {
                     // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
-                    conversationHistory.add(Message.assistant(response.content(), response.toolCalls()));
+                    conversationHistory.add(Message.assistant(
+                        response.reasoningContent(),
+                        response.content(),
+                        response.toolCalls()
+                    ));
                     List<ToolCallResult> toolResults = toolCallExecutor.execute(response.toolCalls());
                     for (ToolCallResult toolResult : toolResults) {
                         ToolCall toolCall = toolResult.toolCall();
@@ -154,7 +160,7 @@ public class Agent {
                 }
 
                 // 没有工具调用，说明模型已经给出最终回答。
-                conversationHistory.add(Message.assistant(response.content()));
+                conversationHistory.add(Message.assistant(response.reasoningContent(), response.content()));
                 return response.content();
             }
 

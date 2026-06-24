@@ -20,6 +20,17 @@ import java.util.Locale;
 
 /**
  * 把本地图片转换成可发送给多模态 Chat Completion API 的 data URL。
+ *
+ * <p>基本处理流程：</p>
+ * <ol>
+ *   <li>{@link #process(Path)} 先读取本地文件字节，并根据文件 MIME 或扩展名推断图片类型。</li>
+ *   <li>{@link #fromBase64(String, String, String)} 会兼容纯 base64 和 data URL，先剥离 data URL 前缀再解码。</li>
+ *   <li>{@link #process(byte[], String, String)} 统一校验图片内容，读取尺寸，估算 base64 后是否超过 API 限制。</li>
+ *   <li>如果原图未超限、没有透明通道且 MIME 是图片类型，则直接复用原始字节，避免无意义重编码。</li>
+ *   <li>如果有透明通道或 MIME 不规范，先把图片铺白底转成 RGB，再优先尝试 PNG 输出。</li>
+ *   <li>如果仍然超限，则按最大边长缩放到 {@link #MAX_DIMENSION} 以内，先试 PNG，再按多个 JPEG 质量档逐步压缩。</li>
+ *   <li>最终生成 {@link ProcessedImage}，由 {@link #toContentPart(ProcessedImage)} 包装成 image_url content part。</li>
+ * </ol>
  */
 public final class ImageProcessor {
     public static final int API_IMAGE_MAX_BASE64_SIZE = 5 * 1024 * 1024;

@@ -4,6 +4,7 @@ import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.MessageHistoryPruner;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.plan.model.ExecutionPlan;
 import com.brucecli.plan.model.TaskStatus;
@@ -119,11 +120,16 @@ public class DeepSeekPlanner implements Planner {
             List<com.brucecli.llm.ToolDefinition> tools = planningToolRegistry == null
                 ? List.of()
                 : planningToolRegistry.getToolDefinitions();
+            MessageHistoryPruner.retainLatestImageMessage(messages);
             ChatResponse response = chatClient.chat(messages, tools);
             if (!response.hasToolCalls()) {
                 return parser.parse(response.content(), userGoal);
             }
-            messages.add(Message.assistant(response.content(), response.toolCalls()));
+            messages.add(Message.assistant(
+                response.reasoningContent(),
+                response.content(),
+                response.toolCalls()
+            ));
             for (ToolCall toolCall : response.toolCalls()) {
                 String rawResult = planningToolRegistry == null
                     ? "规划阶段不允许调用工具"
