@@ -12,10 +12,10 @@ import com.brucecli.tool.GuardedHitlToolRegistry;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ImageReferenceParser;
 import com.brucecli.llm.PreparedUserInput;
-import com.brucecli.agent.memory.MemoryAwareAgent;
 import com.brucecli.agent.memory.MemoryToolRegistrar;
 import com.brucecli.memory.core.MemoryContext;
 import com.brucecli.memory.core.MemoryManager;
+import com.brucecli.memory.core.MemoryStatus;
 import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.mcp.runtime.McpServerManager;
 import com.brucecli.agent.multi.AgentOrchestrator;
@@ -98,7 +98,6 @@ public class IntegratedRuntime implements AutoCloseable {
 
     private Path workspaceRoot;
     private AgentMode mode = AgentMode.REACT;
-    private boolean memoryEnabled = true;
     private boolean ragEnabled;
     private boolean webEnabled = true;
     private boolean parallelEnabled = true;
@@ -106,7 +105,6 @@ public class IntegratedRuntime implements AutoCloseable {
     private GuardedHitlToolRegistry toolRegistry;
     private ToolRegistry planningToolRegistry;
     private Agent reactAgent;
-    private MemoryAwareAgent memoryAwareAgent;
     private PlanAndExecuteAgent planAgent;
     private AgentOrchestrator multiAgent;
     private ParallelToolCallExecutor parallelToolCallExecutor;
@@ -231,18 +229,6 @@ public class IntegratedRuntime implements AutoCloseable {
 
     public void switchMode(AgentMode mode) {
         this.mode = mode;
-    }
-
-    public boolean memoryEnabled() {
-        return memoryEnabled;
-    }
-
-    public void setMemoryEnabled(boolean enabled) {
-        if (memoryEnabled == enabled) {
-            return;
-        }
-        memoryEnabled = enabled;
-        rebuildComponents();
     }
 
     public boolean ragEnabled() {
@@ -387,11 +373,15 @@ public class IntegratedRuntime implements AutoCloseable {
         return memoryManager.searchLongTerm(query, limit);
     }
 
+    public MemoryStatus memoryStatus() {
+        return memoryManager.status();
+    }
+
     public RuntimeStatus status() {
         return new RuntimeStatus(
             mode,
             workspaceRoot,
-            memoryEnabled,
+            memoryManager.status(),
             ragEnabled,
             webEnabled,
             webProviderName(),
@@ -448,22 +438,15 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     private String runReact(PreparedUserInput input, String skillContext) throws Exception {
-        if (memoryEnabled) {
-            return memoryAwareAgent.run(input, skillContext);
-        }
         return reactAgent.run(input, skillContext);
     }
 
     private String runPlan(String input, String taskSystemContext) throws Exception {
         String context = buildMemoryContext(input);
         context = joinContext(context, buildRagContext(input));
-        if (memoryEnabled) {
-            memoryManager.rememberUserMessage(input);
-        }
+        memoryManager.rememberUserMessage(input);
         String result = planAgent.run(input, context, taskSystemContext).toMarkdown();
-        if (memoryEnabled) {
-            memoryManager.rememberAssistantMessage(result);
-        }
+        memoryManager.rememberAssistantMessage(result);
         return result;
     }
 
@@ -483,6 +466,7 @@ public class IntegratedRuntime implements AutoCloseable {
         planningToolRegistry = ToolRegistry.empty(workspaceRoot);
         SkillToolRegistrar.register(toolRegistry, skillManager);
         SkillToolRegistrar.register(planningToolRegistry, skillManager);
+        MemoryToolRegistrar.register(toolRegistry, memoryManager);
 
         String additionalInstructions = buildAdditionalInstructions();
         if (ragEnabled) {
@@ -500,20 +484,7 @@ public class IntegratedRuntime implements AutoCloseable {
             mcpManager.registerTools(toolRegistry);
         }
 
-        if (memoryEnabled) {
-            memoryAwareAgent = new MemoryAwareAgent(
-                chatClient,
-                toolRegistry,
-                memoryManager,
-                additionalInstructions,
-                toolCallBatchExecutor()
-            );
-            reactAgent = null;
-        } else {
-            MemoryToolRegistrar.unregister(toolRegistry);
-            memoryAwareAgent = null;
-            reactAgent = new Agent(chatClient, toolRegistry, additionalInstructions, toolCallBatchExecutor());
-        }
+        reactAgent = new Agent(chatClient, toolRegistry, memoryManager, additionalInstructions, toolCallBatchExecutor());
 
         ExecutionPlanExecutor executor = parallelEnabled
             ? new ParallelPlanExecutor(toolRegistry, concurrencyConfig)
@@ -531,7 +502,7 @@ public class IntegratedRuntime implements AutoCloseable {
             chatClient,
             toolRegistry,
             planningToolRegistry,
-            memoryEnabled ? memoryManager : null,
+            memoryManager,
             workerCount,
             MAX_REVIEW_RETRIES,
             additionalInstructions,
@@ -542,10 +513,7 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     private String buildAdditionalInstructions() {
-        String instructions = SKILL_AGENT_INSTRUCTIONS;
-        if (memoryEnabled) {
-            instructions = joinContext(instructions, MemoryToolRegistrar.AGENT_INSTRUCTIONS);
-        }
+        String instructions = joinContext(SKILL_AGENT_INSTRUCTIONS, MemoryToolRegistrar.AGENT_INSTRUCTIONS);
         if (ragEnabled) {
             instructions = joinContext(instructions, RagToolRegistrar.AGENT_INSTRUCTIONS);
         }
@@ -570,9 +538,6 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     private String buildMemoryContext(String input) throws Exception {
-        if (!memoryEnabled) {
-            return "";
-        }
         MemoryContext context = memoryManager.buildContext(input);
         return context.prompt();
     }

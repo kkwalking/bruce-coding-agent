@@ -1,5 +1,7 @@
 package com.brucecli.integrated.runtime;
 
+import com.brucecli.memory.core.MemoryStatus;
+
 import java.time.Duration;
 import java.nio.file.Path;
 import java.util.List;
@@ -7,7 +9,7 @@ import java.util.List;
 public record RuntimeStatus(
     AgentMode mode,
     Path workspaceRoot,
-    boolean memoryEnabled,
+    MemoryStatus memoryStatus,
     boolean ragEnabled,
     boolean webEnabled,
     String webSearchProvider,
@@ -24,7 +26,7 @@ public record RuntimeStatus(
         return """
             当前模式: %s
             工作目录: %s
-            Memory: %s
+            Memory: (短期 %d 条 / %d tokens，长期 %d 条，最近注入 %d tokens)
             RAG: %s
             RAG 索引: %s
             Web: %s
@@ -36,7 +38,10 @@ public record RuntimeStatus(
             """.formatted(
                 mode,
                 workspaceRoot,
-                memoryEnabled ? "开启" : "关闭",
+                memoryStatus.shortTermEntries(),
+                memoryStatus.shortTermTokens(),
+                memoryStatus.longTermEntries(),
+                memoryStatus.lastContextTokens(),
                 ragEnabled ? "开启" : "关闭",
                 ragIndexed ? "已建立" : "未建立",
                 webEnabled ? "开启 (provider=" + webSearchProvider + ")" : "关闭",

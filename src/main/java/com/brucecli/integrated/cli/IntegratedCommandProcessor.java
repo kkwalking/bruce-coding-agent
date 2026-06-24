@@ -108,8 +108,8 @@ public class IntegratedCommandProcessor {
               /mcp disable <name>    禁用某个 server
               /mcp enable <name>     启用某个 server
 
-            Memory（默认开启）:
-              /memory on|off|status
+            Memory:
+              /memory status
               /memory save <内容>
               /memory search <查询>
 
@@ -308,16 +308,8 @@ public class IntegratedCommandProcessor {
     }
 
     private CommandResult handleMemory(String input) throws Exception {
-        if (input.equalsIgnoreCase("/memory on")) {
-            runtime.setMemoryEnabled(true);
-            return CommandResult.handled("Memory 已开启。");
-        }
-        if (input.equalsIgnoreCase("/memory off")) {
-            runtime.setMemoryEnabled(false);
-            return CommandResult.handled("Memory 已关闭；已有长期记忆仍保留。");
-        }
         if (input.equalsIgnoreCase("/memory") || input.equalsIgnoreCase("/memory status")) {
-            return CommandResult.handled("Memory 当前状态: " + (runtime.memoryEnabled() ? "开启" : "关闭"));
+            return CommandResult.handled(runtime.memoryStatus().toMarkdown());
         }
         if (input.startsWith("/memory save ")) {
             String content = input.substring("/memory save ".length()).trim();

@@ -1,15 +1,16 @@
-# Memory Agent 压缩机制说明
+# ReAct Memory 压缩机制说明
 
-本文说明 `MemoryAwareAgent` 的短期记忆压缩机制，并用一个具体用户输入例子串起完整流程。相关代码主要在：
+本文说明统一 ReAct `Agent` 固定集成 Memory 后的短期记忆压缩机制，并用一个具体用户输入例子串起完整流程。相关代码主要在：
 
-- `src/main/java/com/brucecli/agent/memory/MemoryAwareAgent.java`
+- `src/main/java/com/brucecli/agent/Agent.java`
+- `src/main/java/com/brucecli/agent/ReactMemoryCoordinator.java`
 - `src/main/java/com/brucecli/memory/core/ConversationMemory.java`
 - `src/main/java/com/brucecli/memory/core/MemoryManager.java`
 - `src/main/java/com/brucecli/memory/compress/LlmContextCompressor.java`
 
 ## 一句话理解
 
-Memory Agent 不会把完整历史对话无限塞进模型上下文。它会把最近几条消息保留为短期记忆，把更早的消息先放入 `pendingCompression`，再在构建上下文时压缩成 `SUMMARY` 摘要。
+ReAct Agent 会保留自己的工具调用历史，同时通过 `ReactMemoryCoordinator` 把最近几条消息写入短期记忆，把更早的消息先放入 `pendingCompression`，再在构建上下文时压缩成 `SUMMARY` 摘要。
 
 下一轮调用 LLM 时，模型看到的是：
 
@@ -64,7 +65,7 @@ while (
 
 `store()` 只负责把旧消息放进 `pendingCompression`，不会同步调用 LLM 压缩。真正的压缩发生在下一次构建 Memory 上下文时。
 
-每次 `MemoryAwareAgent.run()` 收到用户输入后，会先调用：
+每次 `Agent.run()` 收到用户输入后，会通过 `ReactMemoryCoordinator` 先调用：
 
 ```java
 MemoryContext memoryContext = memoryManager.buildContext(userInput);
@@ -135,7 +136,7 @@ Map.of(
 
 执行流程：
 
-1. `MemoryAwareAgent.run()` 先调用 `memoryManager.buildContext(userInput)`。
+1. `Agent.run()` 先通过 `ReactMemoryCoordinator` 调用 `memoryManager.buildContext(userInput)`。
 2. 因为这是早期对话，`pendingCompression` 还是空的，`compressIfNeeded()` 不会产生摘要。
 3. Agent 把 Memory 上下文和当前用户输入发给 LLM。
 4. 任务执行结束后，Agent 调用 `rememberUserMessage()` 和 `rememberAssistantMessage()` 保存本轮对话。
@@ -190,7 +191,7 @@ entries:
 继续优化 Memory 压缩逻辑，把用户偏好、项目约定和已完成动作都保留下来。
 ```
 
-这一次 `MemoryAwareAgent.run()` 仍然先调用 `buildContext(userInput)`。进入 `compressIfNeeded()` 后：
+这一次 `Agent.run()` 仍然先通过 `ReactMemoryCoordinator` 调用 `buildContext(userInput)`。进入 `compressIfNeeded()` 后：
 
 1. `drainPendingCompression()` 取出前面待压缩的旧消息，并清空待压缩队列；
 2. `MemoryManager` 不再额外根据 80% 主动移除短期记忆；

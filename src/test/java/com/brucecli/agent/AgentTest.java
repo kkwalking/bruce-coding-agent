@@ -8,6 +8,10 @@ import com.brucecli.llm.Message;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.llm.ToolDefinition;
+import com.brucecli.memory.core.ConversationMemory;
+import com.brucecli.memory.core.LongTermMemory;
+import com.brucecli.memory.core.MemoryManager;
+import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.tool.ToolRegistry;
 import org.junit.jupiter.api.Test;
@@ -19,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,6 +51,7 @@ class AgentTest {
         Agent agent = new Agent(
             new QueueChatClient(responses),
             toolRegistry,
+            memoryManager(),
             "",
             ToolCallExecutor.serial(toolRegistry)
         );
@@ -57,7 +63,7 @@ class AgentTest {
     }
 
     @Test
-    void prunesHistoricalImageContentBeforeNextModelCall() {
+    void prunesHistoricalImageContentBeforeNextModelCall() throws Exception {
         RecordingChatClient chatClient = new RecordingChatClient(
             new ChatResponse("第一张已处理。", List.of()),
             new ChatResponse("第二张已处理。", List.of())
@@ -65,6 +71,7 @@ class AgentTest {
         Agent agent = new Agent(
             chatClient,
             ToolRegistry.empty(tempDir),
+            memoryManager(),
             "",
             toolCalls -> List.of()
         );
@@ -89,6 +96,14 @@ class AgentTest {
         assertTrue(secondCallMessages.stream().anyMatch(message ->
             message.hasImageContent() && message.content().contains("第二张")
         ));
+    }
+
+    private MemoryManager memoryManager() throws IOException {
+        return new MemoryManager(
+            new ConversationMemory(1_000),
+            new LongTermMemory(tempDir.resolve("memory")),
+            entries -> MemoryEntry.summary("测试摘要", Map.of("source_count", String.valueOf(entries.size())))
+        );
     }
 
     /**

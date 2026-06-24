@@ -8,7 +8,7 @@ import com.brucecli.tool.Tool;
 import com.brucecli.tool.ToolRegistry;
 
 /**
- * 把长期记忆能力注册成可动态启停的 Agent 工具。
+ * 把长期记忆能力注册成固定集成的 Agent 工具。
  */
 public final class MemoryToolRegistrar {
     public static final String TOOL_NAME = "save_long_term_memory";
@@ -45,10 +45,6 @@ public final class MemoryToolRegistrar {
                     : "长期记忆已保存: " + content.trim() + "\n保存原因: " + reason.trim();
             }
         ));
-    }
-
-    public static void unregister(ToolRegistry toolRegistry) {
-        toolRegistry.unregister(TOOL_NAME);
     }
 
     private static ObjectNode createParameters() {

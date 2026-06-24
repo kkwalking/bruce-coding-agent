@@ -55,7 +55,7 @@ java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 /plan                   切换 Plan-and-Execute 模式
 /multi                  切换 Multi-Agent 模式
 
-/memory on|off|status
+/memory status
 /memory save <内容>
 /memory search <查询>
 
@@ -241,7 +241,7 @@ Streamable HTTP 示例：
 
 ```text
 src/main/java/com/brucecli/
-├── agent/          ReAct、Memory Agent 与 Multi-Agent 编排
+├── agent/          ReAct、ReAct Memory 协调与 Multi-Agent 编排
 ├── llm/            DeepSeek/OpenAI-compatible 客户端与模型
 ├── tool/           工具注册、Tool Call 执行、并行工具执行与命令安全守卫
 ├── plan/           Plan-and-Execute DAG 与计划执行器

@@ -45,7 +45,6 @@ class IntegratedRuntimeTest {
         try (TestContext context = context()) {
             RuntimeStatus status = context.runtime.status();
             assertEquals(AgentMode.REACT, status.mode());
-            assertTrue(status.memoryEnabled());
             assertFalse(status.ragEnabled());
             assertTrue(status.webEnabled());
             assertTrue(status.hitlEnabled());
@@ -123,15 +122,23 @@ class IntegratedRuntimeTest {
     }
 
     @Test
-    void memorySwitchRemovesToolButKeepsLongTermData() throws Exception {
+    void memoryIsFixedAndCommandsDoNotToggleIt() throws Exception {
         try (TestContext context = context()) {
             context.runtime.saveMemory("项目默认使用 JDK 17");
 
-            context.commands.handle("/memory off");
-            assertFalse(context.runtime.status().toolNames().contains("save_long_term_memory"));
+            assertFalse(context.commands.handle("/memory off").handled());
+            assertFalse(context.commands.handle("/memory on").handled());
+            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
             assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
+            assertTrue(context.commands.handle("/memory status").output().contains("# Memory Status"));
 
-            context.commands.handle("/memory on");
+            context.commands.handle("/web off");
+            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
+            context.commands.handle("/parallel off");
+            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
+            context.commands.handle("/rag on");
+            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
+            context.commands.handle("/rag off");
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
             assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
         }
@@ -200,7 +207,7 @@ class IntegratedRuntimeTest {
     }
 
     @Test
-    void memoryAgentProgressivelyLoadsMatchingSkillWithoutSelectorCall() throws Exception {
+    void reactAgentProgressivelyLoadsMatchingSkillWithoutSelectorCall() throws Exception {
         writeSkill("java-review", "审查 Java 代码", "AUTO_SELECTED_INSTRUCTION");
         CapturingChatClient chatClient = new CapturingChatClient(
             new ChatResponse("", List.of(toolCall(
@@ -257,7 +264,6 @@ class IntegratedRuntimeTest {
             text("next")
         );
         try (TestContext context = context(chatClient)) {
-            context.commands.handle("/memory off");
             assertEquals("reviewed", context.runtime.run("审查代码"));
             assertEquals("next", context.runtime.run("后续任务"));
 
@@ -364,7 +370,6 @@ class IntegratedRuntimeTest {
             Files.writeString(tempDir.resolve("a.txt"), "alpha");
             Files.writeString(tempDir.resolve("b.txt"), "bravo");
 
-            context.commands.handle("/memory off");
             String result = context.runtime.run("读取两个文件");
 
             assertEquals("done", result);

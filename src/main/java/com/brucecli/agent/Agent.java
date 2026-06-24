@@ -7,6 +7,7 @@ import com.brucecli.llm.Message;
 import com.brucecli.llm.MessageHistoryPruner;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
+import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.tool.ToolCallResult;
 import com.brucecli.tool.ToolRegistry;
@@ -57,6 +58,7 @@ public class Agent {
     private final ChatClient llmClient;
     private final ToolRegistry toolRegistry;
     private final ToolCallExecutor toolCallExecutor;
+    private final ReactMemoryCoordinator memoryCoordinator;
     private final String systemPrompt;
 
     // conversationHistory 是 ReAct 循环的上下文载体：用户问题、模型工具调用、工具结果都会放进去。
@@ -66,11 +68,13 @@ public class Agent {
     public Agent(
         ChatClient llmClient,
         ToolRegistry toolRegistry,
+        MemoryManager memoryManager,
         String additionalSystemPrompt,
         ToolCallExecutor toolCallExecutor
     ) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
+        this.memoryCoordinator = new ReactMemoryCoordinator(memoryManager);
         this.maxIterations = DEFAULT_MAX_ITERATIONS;
         this.toolCallExecutor = toolCallExecutor == null
             ? ToolCallExecutor.serial(toolRegistry)
@@ -103,7 +107,14 @@ public class Agent {
 
         logger.info("[Agent] 开始任务: {}", preparedInput.text());
 
+        Message memoryContext = null;
         Message temporaryContext = null;
+        try {
+            memoryContext = memoryCoordinator.beginTurn(preparedInput.text());
+            conversationHistory.add(memoryContext);
+        } catch (IOException e) {
+            return "Memory 构建失败: " + e.getMessage();
+        }
         if (taskSystemContext != null && !taskSystemContext.isBlank()) {
             temporaryContext = Message.system(taskSystemContext);
             conversationHistory.add(temporaryContext);
@@ -142,6 +153,7 @@ public class Agent {
                         response.content(),
                         response.toolCalls()
                     ));
+                    memoryCoordinator.rememberToolRequest(response.toolCalls());
                     List<ToolCallResult> toolResults = toolCallExecutor.execute(response.toolCalls());
                     for (ToolCallResult toolResult : toolResults) {
                         ToolCall toolCall = toolResult.toolCall();
@@ -152,6 +164,7 @@ public class Agent {
 
                         // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
                         conversationHistory.add(Message.tool(toolCall.id(), toolResult.result()));
+                        memoryCoordinator.rememberToolResult(toolResult);
                     }
                     appendImageToolMessages(toolResults);
 
@@ -161,13 +174,19 @@ public class Agent {
 
                 // 没有工具调用，说明模型已经给出最终回答。
                 conversationHistory.add(Message.assistant(response.reasoningContent(), response.content()));
+                memoryCoordinator.rememberAssistantAnswer(response.content());
                 return response.content();
             }
 
-            return "达到最大迭代次数限制";
+            String stopped = "达到最大迭代次数限制";
+            memoryCoordinator.rememberAssistantAnswer(stopped);
+            return stopped;
         } finally {
             if (temporaryContext != null) {
                 conversationHistory.remove(temporaryContext);
+            }
+            if (memoryContext != null) {
+                conversationHistory.remove(memoryContext);
             }
             redactSkillToolResults();
         }
