@@ -1,6 +1,5 @@
 package com.brucecli.agent;
 
-import com.brucecli.agent.memory.MemoryToolRegistrar;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.FunctionCall;
@@ -11,6 +10,7 @@ import com.brucecli.memory.core.ConversationMemory;
 import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.memory.model.MemoryEntry;
+import com.brucecli.memory.tool.MemoryToolRegistrar;
 import com.brucecli.skill.SkillToolRegistrar;
 import com.brucecli.tool.Tool;
 import com.brucecli.tool.ToolCallExecutor;
