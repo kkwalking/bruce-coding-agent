@@ -2,12 +2,14 @@ package com.brucecli.agent.multi;
 
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
+import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.agent.multi.model.AgentMessage;
 import com.brucecli.agent.multi.model.AgentRole;
 import com.brucecli.agent.multi.model.ExecutionStep;
 import com.brucecli.tool.ToolRegistry;
+import com.brucecli.tool.ToolResultContent;
 import com.brucecli.skill.SkillToolRegistrar;
 
 import java.io.IOException;
@@ -197,11 +199,14 @@ public class SubAgent {
                         String toolName = toolCall.function().name();
                         String arguments = toolCall.function().arguments();
                         out.printf("[%s] 调用工具 %s %s%n", name, toolName, arguments);
-                        String toolResult = toolRegistry == null
+                        String rawToolResult = toolRegistry == null
                             ? "当前角色不允许调用工具"
                             : toolRegistry.executeTool(toolName, arguments);
+                        ToolResultContent content = ToolResultContent.parse(rawToolResult);
+                        String toolResult = content.text();
                         out.printf("[%s] 工具结果: %s%n", name, abbreviate(toolResult, TOOL_OUTPUT_PREVIEW));
                         chatHistory.add(Message.tool(toolCall.id(), toolResult));
+                        appendImageToolMessage(toolName, content);
                     }
                     continue;
                 }
@@ -264,6 +269,18 @@ public class SubAgent {
             return value == null ? "" : value;
         }
         return value.substring(0, maxChars) + "...";
+    }
+
+    private void appendImageToolMessage(String toolName, ToolResultContent content) {
+        if (!content.hasImageParts()) {
+            return;
+        }
+        List<ContentPart> parts = new ArrayList<>();
+        parts.add(ContentPart.text(
+            "工具 " + toolName + " 返回了图片内容，请结合上面的工具文本结果分析。"
+        ));
+        parts.addAll(content.imageParts());
+        chatHistory.add(Message.user(parts));
     }
 
     private void redactSkillToolResults() {

@@ -49,7 +49,10 @@ public class GuardedHitlToolRegistry extends ToolRegistry {
         if (!approval.approved()) {
             return concurrencyConfig.truncate(approval.message());
         }
-        return concurrencyConfig.truncate(super.executeTool(name, approval.arguments()));
+        return ToolResultContent.mapTextPreservingImages(
+            super.executeTool(name, approval.arguments()),
+            concurrencyConfig::truncate
+        );
     }
 
     private ApprovalOutcome approve(String name, Map<String, String> args) {

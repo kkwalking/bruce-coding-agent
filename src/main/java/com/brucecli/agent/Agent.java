@@ -2,7 +2,9 @@ package com.brucecli.agent;
 
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
+import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.tool.ToolCallResult;
@@ -89,11 +91,16 @@ public class Agent {
     }
 
     public String run(String userInput, String taskSystemContext) {
-        if (userInput == null || userInput.isBlank()) {
+        return run(PreparedUserInput.text(userInput), taskSystemContext);
+    }
+
+    public String run(PreparedUserInput userInput, String taskSystemContext) {
+        PreparedUserInput preparedInput = userInput == null ? PreparedUserInput.text("") : userInput;
+        if (preparedInput.text().isBlank()) {
             return "请输入任务内容";
         }
 
-        logger.info("[Agent] 开始任务: {}", userInput);
+        logger.info("[Agent] 开始任务: {}", preparedInput.text());
 
         Message temporaryContext = null;
         if (taskSystemContext != null && !taskSystemContext.isBlank()) {
@@ -102,7 +109,7 @@ public class Agent {
         }
 
         // 用户输入必须加入历史，否则模型不知道这一轮要做什么。
-        conversationHistory.add(Message.user(userInput));
+        conversationHistory.add(preparedInput.message());
 
         try {
             int iteration = 0;
@@ -129,7 +136,8 @@ public class Agent {
                 if (response.hasToolCalls()) {
                     // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
                     conversationHistory.add(Message.assistant(response.content(), response.toolCalls()));
-                    for (ToolCallResult toolResult : toolCallExecutor.execute(response.toolCalls())) {
+                    List<ToolCallResult> toolResults = toolCallExecutor.execute(response.toolCalls());
+                    for (ToolCallResult toolResult : toolResults) {
                         ToolCall toolCall = toolResult.toolCall();
                         logger.info(
                             "[Agent] 工具 {} 完成。",
@@ -139,6 +147,7 @@ public class Agent {
                         // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
                         conversationHistory.add(Message.tool(toolCall.id(), toolResult.result()));
                     }
+                    appendImageToolMessages(toolResults);
 
                     // 工具执行完不直接返回给用户，而是继续让模型基于工具结果生成下一步或最终回答。
                     continue;
@@ -170,6 +179,20 @@ public class Agent {
             return SYSTEM_PROMPT;
         }
         return SYSTEM_PROMPT + "\n" + additionalSystemPrompt.strip();
+    }
+
+    private void appendImageToolMessages(List<ToolCallResult> toolResults) {
+        for (ToolCallResult result : toolResults) {
+            if (!result.hasImageParts()) {
+                continue;
+            }
+            List<ContentPart> parts = new ArrayList<>();
+            parts.add(ContentPart.text(
+                "工具 " + result.toolCall().function().name() + " 返回了图片内容，请结合上面的工具文本结果分析。"
+            ));
+            parts.addAll(result.imageParts());
+            conversationHistory.add(Message.user(parts));
+        }
     }
 
     private void redactSkillToolResults() {

@@ -1,6 +1,7 @@
 package com.brucecli.mcp.protocol;
 
 import com.brucecli.mcp.transport.McpTransport;
+import com.brucecli.tool.ToolResultContent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -54,7 +55,7 @@ public class McpClient implements AutoCloseable {
         params.put("name", name);
         params.set("arguments", arguments == null || arguments.isMissingNode() ? mapper.createObjectNode() : arguments);
         JsonNode result = request("tools/call", params, CALL_TIMEOUT);
-        return formatToolResult(result);
+        return formatToolResult(name, result);
     }
 
     public Long pid() {
@@ -112,7 +113,7 @@ public class McpClient implements AutoCloseable {
         return result;
     }
 
-    private String formatToolResult(JsonNode result) {
+    private String formatToolResult(String toolName, JsonNode result) {
         JsonNode content = result.path("content");
         if (!content.isArray()) {
             return result.toPrettyString();
@@ -123,6 +124,19 @@ public class McpClient implements AutoCloseable {
             String type = item.path("type").asText("");
             if ("text".equals(type)) {
                 chunks.add(item.path("text").asText(""));
+            } else if ("image".equals(type)) {
+                String data = item.path("data").asText("");
+                String mimeType = item.path("mimeType").asText("image/png");
+                if (data.isBlank()) {
+                    chunks.add("[MCP 图片内容缺少 base64 data]");
+                } else {
+                    chunks.add("[MCP 图片内容: " + mimeType + "]");
+                    chunks.add(ToolResultContent.encodeImage(
+                        mimeType,
+                        data,
+                        "mcp:" + serverName + "/" + toolName
+                    ));
+                }
             } else {
                 chunks.add("[非文本 MCP 内容: " + (type.isBlank() ? "unknown" : type) + "]");
             }

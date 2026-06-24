@@ -124,8 +124,9 @@ import java.util.concurrent.TimeUnit;
  * }</pre>
  */
 public class DeepSeekClient implements ChatClient {
-    // DeepSeek 的 OpenAI-compatible endpoint，完整请求地址是 base URL + /chat/completions。
-    private static final String API_URL = "https://api.deepseek.com/chat/completions";
+    // DeepSeek 的 OpenAI-compatible endpoint。
+    private static final String DEFAULT_API_URL = "https://api.deepseek.com/chat/completions";
+    private static final String ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
     // 默认使用轻量模型，适合学习和频繁调试；也可以通过 DEEPSEEK_MODEL 覆盖。
     private static final String DEFAULT_MODEL = "deepseek-v4-flash";
@@ -133,6 +134,7 @@ public class DeepSeekClient implements ChatClient {
 
     private final String apiKey;
     private final String model;
+    private final String apiUrl;
     private final OkHttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -143,7 +145,11 @@ public class DeepSeekClient implements ChatClient {
      * @param model 模型名，为空时回退到 DEFAULT_MODEL
      */
     public DeepSeekClient(String apiKey, String model) {
-        this(apiKey, model, new OkHttpClient.Builder()
+        this(apiKey, model, (String) null);
+    }
+
+    public DeepSeekClient(String apiKey, String model, String apiUrl) {
+        this(apiKey, model, apiUrl, new OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .build());
@@ -153,8 +159,13 @@ public class DeepSeekClient implements ChatClient {
      * 包级构造方法主要给测试用，方便替换 OkHttpClient。
      */
     DeepSeekClient(String apiKey, String model, OkHttpClient httpClient) {
+        this(apiKey, model, null, httpClient);
+    }
+
+    DeepSeekClient(String apiKey, String model, String apiUrl, OkHttpClient httpClient) {
         this.apiKey = apiKey;
         this.model = model == null || model.isBlank() ? DEFAULT_MODEL : model;
+        this.apiUrl = selectApiUrl(this.model, apiUrl);
         this.httpClient = httpClient;
     }
 
@@ -165,8 +176,10 @@ public class DeepSeekClient implements ChatClient {
         requestBody.put("model", model);
         requestBody.put("stream", false);
 
-        // Tool Call 学习场景需要模型直接给出工具调用或最终回答，所以关闭思考模式。
-        requestBody.putObject("thinking").put("type", "disabled");
+        // Tool Call 学习场景需要模型直接给出工具调用或最终回答，所以 DeepSeek 关闭思考模式。
+        if (usesDeepSeekThinkingParameter()) {
+            requestBody.putObject("thinking").put("type", "disabled");
+        }
 
         // 2. 序列化历史消息。ReAct 循环依赖完整历史，不能只发送最后一条用户消息。
         ArrayNode messagesArray = requestBody.putArray("messages");
@@ -174,12 +187,7 @@ public class DeepSeekClient implements ChatClient {
             ObjectNode msgNode = messagesArray.addObject();
             msgNode.put("role", msg.role());
 
-            // 有些 assistant 消息只包含 tool_calls，content 可能为空或 null。
-            if (msg.content() == null) {
-                msgNode.putNull("content");
-            } else {
-                msgNode.put("content", msg.content());
-            }
+            appendMessageContent(msgNode, msg);
 
             // assistant 消息如果带有工具调用，需要按 API 要求原样放回历史。
             if (msg.toolCalls() != null && !msg.toolCalls().isEmpty()) {
@@ -218,7 +226,7 @@ public class DeepSeekClient implements ChatClient {
 
         // 4. 发送 HTTP 请求。Authorization 使用 Bearer Token。
         Request request = new Request.Builder()
-            .url(API_URL)
+            .url(apiUrl)
             .header("Authorization", "Bearer " + apiKey)
             .post(RequestBody.create(requestBody.toString(), JSON))
             .build();
@@ -231,6 +239,35 @@ public class DeepSeekClient implements ChatClient {
 
             // 5. 把厂商响应解析成项目内部的 ChatResponse，Agent 层就不用关心原始 JSON 细节。
             return parseResponse(responseBody);
+        }
+    }
+
+    private void appendMessageContent(ObjectNode msgNode, Message msg) {
+        if (!msg.hasContentParts()) {
+            if (msg.content() == null) {
+                msgNode.putNull("content");
+            } else {
+                msgNode.put("content", msg.content());
+            }
+            return;
+        }
+
+        ArrayNode contentArray = msgNode.putArray("content");
+        for (ContentPart part : msg.contentParts()) {
+            if (part == null) {
+                continue;
+            }
+            ObjectNode partNode = contentArray.addObject();
+            if (part.isText()) {
+                partNode.put("type", "text");
+                partNode.put("text", part.text() == null ? "" : part.text());
+            } else if (part.isImage()) {
+                partNode.put("type", "image_url");
+                partNode.putObject("image_url").put("url", part.imageUrl().url());
+            } else {
+                partNode.put("type", "text");
+                partNode.put("text", part.fallbackText());
+            }
         }
     }
 
@@ -264,5 +301,34 @@ public class DeepSeekClient implements ChatClient {
         }
 
         return new ChatResponse(content, toolCalls);
+    }
+
+    private boolean usesDeepSeekThinkingParameter() {
+        String normalizedModel = model.toLowerCase();
+        String normalizedUrl = apiUrl.toLowerCase();
+        return normalizedUrl.contains("api.deepseek.com") || normalizedModel.startsWith("deepseek-");
+    }
+
+    private static String selectApiUrl(String model, String configuredApiUrl) {
+        if (configuredApiUrl != null && !configuredApiUrl.isBlank()) {
+            return toChatCompletionsUrl(configuredApiUrl);
+        }
+        String normalized = model == null ? "" : model.trim().toLowerCase();
+        if (normalized.startsWith("glm-")) {
+            return ZHIPU_API_URL;
+        }
+        return DEFAULT_API_URL;
+    }
+
+    private static String toChatCompletionsUrl(String value) {
+        String trimmed = trimSlash(value.trim());
+        if (trimmed.endsWith("/chat/completions")) {
+            return trimmed;
+        }
+        return trimmed + "/chat/completions";
+    }
+
+    private static String trimSlash(String value) {
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 }

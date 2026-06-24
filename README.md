@@ -12,13 +12,15 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 - Bruce Agent Skills 渐进式工作流加载
 - HITL 人工审批
 - ReAct、Plan、Multi-Agent 并行执行
+- LLM 多模态图片输入（`@image:` / `@clipboard`）
 
 ## 环境要求
 
 - JDK 17+
 - Maven 3.9+
-- DeepSeek API Key
+- DeepSeek API Key，或其他 OpenAI-compatible LLM API Key
 - 可选：智谱 GLM API Key，用于联网搜索（`GLM_API_KEY`，不复用 `DEEPSEEK_API_KEY`）
+- 可选：智谱 GLM-5V，用于图片输入（可配置 `LLM_MODEL=glm-5v` 并复用 `GLM_API_KEY`）
 - 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置
 
 ## 构建与运行
@@ -27,6 +29,7 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 cp .env.example .env
 # 编辑 .env，填入 DEEPSEEK_API_KEY
 # 如需联网搜索，额外填入 GLM_API_KEY
+# 如需图片输入，配置支持视觉的 LLM，例如 GLM-5V
 
 mvn clean test
 mvn package
@@ -85,6 +88,42 @@ $code-reviewer 审查当前代码变更
 ```
 
 默认状态：ReAct、Memory、Web、HITL 和 Parallel 开启，RAG 关闭。
+
+## 多模态图片输入
+
+ReAct 模式支持在用户输入中附加图片：
+
+```text
+帮我分析这张截图 @image:./shot.png
+对比两张图 @image:./before.png @image:./after.png
+看看剪贴板截图 @clipboard
+```
+
+`@image:` 支持相对路径、绝对路径、`file://`，路径包含空格时用尖括号包裹：
+
+```text
+@image:<file:///Users/bruce/Desktop/path with spaces.png>
+```
+
+默认 DeepSeek 文本模型不一定支持视觉输入。可以通过通用 LLM 配置切换到支持图片的
+OpenAI-compatible 模型：
+
+```env
+LLM_MODEL=glm-5v
+GLM_API_KEY=your_glm_api_key_here
+# 可选；glm-* 模型默认会使用这个地址
+# LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
+```
+
+也可以继续使用旧配置名：
+
+```env
+DEEPSEEK_API_KEY=your_api_key_here
+DEEPSEEK_MODEL=deepseek-v4-flash
+```
+
+图片会先预处理为 data URL：小图直通，透明 PNG 会铺白底，超大图片会等比缩放并压缩，
+同时在 Memory/RAG 中只保留不含 base64 的文字占位，避免长期记忆膨胀。
 
 ## Agent Skills
 

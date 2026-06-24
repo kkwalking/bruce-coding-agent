@@ -125,6 +125,10 @@ public class IntegratedCommandProcessor {
               /skill reload          重新扫描用户级和项目级 Skill
               $<skill> <任务>         在同一条输入中显式使用 Skill
 
+            多模态:
+              @image:<path>          在 ReAct 输入中附加图片，path 支持相对路径、绝对路径和 file://
+              @clipboard             附加 macOS 剪贴板中的 PNG 图片
+
             通用:
               /status                查看统一运行状态
               /clear                 清空会话状态，保留长期记忆和 RAG 索引

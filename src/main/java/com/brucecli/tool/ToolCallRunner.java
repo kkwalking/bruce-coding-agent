@@ -33,10 +33,12 @@ public final class ToolCallRunner {
                 toolCall.function().name(),
                 toolCall.function().arguments()
             );
+            ToolResultContent content = ToolResultContent.parse(result);
             return ToolCallResult.success(
                 toolCall,
-                resultMapper.apply(result),
-                elapsedMillis(start)
+                resultMapper.apply(content.text()),
+                elapsedMillis(start),
+                content.imageParts()
             );
         } catch (RuntimeException exception) {
             return ToolCallResult.failed(toolCall, exception, elapsedMillis(start));

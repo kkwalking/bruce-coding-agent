@@ -4,7 +4,9 @@ import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.tool.ToolCallResult;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
+import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.memory.core.MemoryContext;
 import com.brucecli.memory.core.MemoryManager;
@@ -132,8 +134,13 @@ public class MemoryAwareAgent {
     }
 
     public String run(String userInput, String taskSystemContext) throws IOException {
-        MemoryContext memoryContext = memoryManager.buildContext(userInput);
-        memoryManager.rememberUserMessage(userInput);
+        return run(PreparedUserInput.text(userInput), taskSystemContext);
+    }
+
+    public String run(PreparedUserInput userInput, String taskSystemContext) throws IOException {
+        PreparedUserInput preparedInput = userInput == null ? PreparedUserInput.text("") : userInput;
+        MemoryContext memoryContext = memoryManager.buildContext(preparedInput.text());
+        memoryManager.rememberUserMessage(preparedInput.text());
 
         List<Message> workingMessages = new ArrayList<>();
         workingMessages.add(Message.system(systemPrompt));
@@ -141,7 +148,7 @@ public class MemoryAwareAgent {
         if (taskSystemContext != null && !taskSystemContext.isBlank()) {
             workingMessages.add(Message.system(taskSystemContext));
         }
-        workingMessages.add(Message.user(userInput));
+        workingMessages.add(preparedInput.message());
 
         for (int i = 0; i < maxIterations; i++) {
             ChatResponse response = chatClient.chat(workingMessages, toolRegistry.getToolDefinitions());
@@ -155,7 +162,8 @@ public class MemoryAwareAgent {
             workingMessages.add(Message.assistant(response.content(), response.toolCalls()));
             memoryManager.rememberAssistantMessage("模型请求调用工具: " + renderToolNames(response.toolCalls()));
 
-            for (ToolCallResult toolResult : toolCallBatchExecutor.execute(response.toolCalls())) {
+            List<ToolCallResult> toolResults = toolCallBatchExecutor.execute(response.toolCalls());
+            for (ToolCallResult toolResult : toolResults) {
                 ToolCall toolCall = toolResult.toolCall();
                 String toolName = toolCall.function().name();
                 logger.info("[MemoryAgent] 工具 {} 完成，结果: {}", toolName, toolResult.result());
@@ -168,6 +176,7 @@ public class MemoryAwareAgent {
                         : toolResult.result()
                 );
             }
+            appendImageToolMessages(workingMessages, toolResults);
         }
 
         String stopped = "达到最大迭代次数，任务可能尚未完成。";
@@ -187,5 +196,19 @@ public class MemoryAwareAgent {
             return SYSTEM_PROMPT;
         }
         return SYSTEM_PROMPT + "\n" + additionalSystemPrompt.strip();
+    }
+
+    private void appendImageToolMessages(List<Message> workingMessages, List<ToolCallResult> toolResults) {
+        for (ToolCallResult result : toolResults) {
+            if (!result.hasImageParts()) {
+                continue;
+            }
+            List<ContentPart> parts = new ArrayList<>();
+            parts.add(ContentPart.text(
+                "工具 " + result.toolCall().function().name() + " 返回了图片内容，请结合上面的工具文本结果分析。"
+            ));
+            parts.addAll(result.imageParts());
+            workingMessages.add(Message.user(parts));
+        }
     }
 }

@@ -2,11 +2,13 @@ package com.brucecli.plan.planner;
 
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
+import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.plan.model.ExecutionPlan;
 import com.brucecli.plan.model.TaskStatus;
 import com.brucecli.tool.ToolRegistry;
+import com.brucecli.tool.ToolResultContent;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -123,13 +125,15 @@ public class DeepSeekPlanner implements Planner {
             }
             messages.add(Message.assistant(response.content(), response.toolCalls()));
             for (ToolCall toolCall : response.toolCalls()) {
-                String result = planningToolRegistry == null
+                String rawResult = planningToolRegistry == null
                     ? "规划阶段不允许调用工具"
                     : planningToolRegistry.executeTool(
                         toolCall.function().name(),
                         toolCall.function().arguments()
                     );
-                messages.add(Message.tool(toolCall.id(), result));
+                ToolResultContent content = ToolResultContent.parse(rawResult);
+                messages.add(Message.tool(toolCall.id(), content.text()));
+                appendImageToolMessage(messages, toolCall.function().name(), content);
             }
         }
         throw new IOException("规划器读取 Skill 资源次数超过限制");
@@ -182,5 +186,17 @@ public class DeepSeekPlanner implements Planner {
             return BASE_SYSTEM_PROMPT;
         }
         return BASE_SYSTEM_PROMPT + "\n" + additionalSystemPrompt.strip();
+    }
+
+    private void appendImageToolMessage(List<Message> messages, String toolName, ToolResultContent content) {
+        if (!content.hasImageParts()) {
+            return;
+        }
+        List<ContentPart> parts = new ArrayList<>();
+        parts.add(ContentPart.text(
+            "工具 " + toolName + " 返回了图片内容，请结合上面的工具文本结果分析。"
+        ));
+        parts.addAll(content.imageParts());
+        messages.add(Message.user(parts));
     }
 }

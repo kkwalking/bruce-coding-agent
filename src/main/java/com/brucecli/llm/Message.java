@@ -11,10 +11,21 @@ import java.util.List;
  * assistant: 模型回复，可能附带 tool_calls；
  * tool: 工具执行结果，需要通过 toolCallId 关联回某一次工具调用。</p>
  */
-public record Message(String role, String content, List<ToolCall> toolCalls, String toolCallId) {
+public record Message(
+    String role,
+    String content,
+    List<ToolCall> toolCalls,
+    String toolCallId,
+    List<ContentPart> contentParts
+) {
+    public Message(String role, String content, List<ToolCall> toolCalls, String toolCallId) {
+        this(role, content, toolCalls, toolCallId, null);
+    }
+
     public Message {
         // record 默认只是保存引用，这里复制一份，避免外部修改历史消息里的工具调用列表。
         toolCalls = toolCalls == null ? null : List.copyOf(toolCalls);
+        contentParts = contentParts == null ? null : List.copyOf(contentParts);
     }
 
     /**
@@ -29,6 +40,19 @@ public record Message(String role, String content, List<ToolCall> toolCalls, Str
      */
     public static Message user(String content) {
         return new Message("user", content, null, null);
+    }
+
+    /**
+     * 用户多模态输入。content 保留一份纯文本 fallback，方便 Memory、RAG 和日志继续工作。
+     */
+    public static Message user(List<ContentPart> contentParts) {
+        return new Message(
+            "user",
+            plainText(contentParts),
+            null,
+            null,
+            contentParts == null ? null : List.copyOf(contentParts)
+        );
     }
 
     /**
@@ -55,5 +79,30 @@ public record Message(String role, String content, List<ToolCall> toolCalls, Str
      */
     public static Message tool(String toolCallId, String content) {
         return new Message("tool", content, null, toolCallId);
+    }
+
+    public boolean hasContentParts() {
+        return contentParts != null && !contentParts.isEmpty();
+    }
+
+    private static String plainText(List<ContentPart> parts) {
+        if (parts == null || parts.isEmpty()) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
+        for (ContentPart part : parts) {
+            if (part == null) {
+                continue;
+            }
+            String value = part.fallbackText();
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            if (!text.isEmpty()) {
+                text.append('\n');
+            }
+            text.append(value);
+        }
+        return text.toString();
     }
 }

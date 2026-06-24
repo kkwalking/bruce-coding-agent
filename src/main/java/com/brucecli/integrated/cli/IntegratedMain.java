@@ -21,18 +21,28 @@ public class IntegratedMain {
     public static void main(String[] args) throws Exception {
         printBanner();
         EnvLoader env = new EnvLoader();
-        String apiKey = env.get("DEEPSEEK_API_KEY");
+        String model = firstNonBlank(env.get("LLM_MODEL"), env.get("DEEPSEEK_MODEL"));
+        String apiKey = firstNonBlank(env.get("LLM_API_KEY"), env.get("DEEPSEEK_API_KEY"));
+        if ((apiKey == null || apiKey.isBlank()) && isGlmModel(model)) {
+            apiKey = env.get("GLM_API_KEY");
+        }
         if (apiKey == null || apiKey.isBlank()) {
-            System.err.println("错误: 未找到 DEEPSEEK_API_KEY");
-            System.err.println("请在项目根目录的 .env 中配置，或设置同名环境变量。");
+            System.err.println("错误: 未找到 LLM_API_KEY 或 DEEPSEEK_API_KEY");
+            System.err.println("请在项目根目录的 .env 中配置，或设置同名环境变量。GLM 模型也可以配置 GLM_API_KEY。");
             System.exit(1);
         }
+        String apiUrl = firstNonBlank(
+            env.get("LLM_API_URL"),
+            env.get("DEEPSEEK_API_URL"),
+            env.get("LLM_BASE_URL"),
+            env.get("DEEPSEEK_BASE_URL")
+        );
 
         BufferedReader reader = new BufferedReader(
             new InputStreamReader(System.in, StandardCharsets.UTF_8)
         );
         TerminalHitlHandler hitlHandler = new TerminalHitlHandler(true, reader, System.out);
-        DeepSeekClient chatClient = new DeepSeekClient(apiKey, env.get("DEEPSEEK_MODEL"));
+        DeepSeekClient chatClient = new DeepSeekClient(apiKey, model, apiUrl);
         MemoryManager memoryManager = new MemoryManager(
             new ConversationMemory(8_000),
             new LongTermMemory(),
@@ -107,10 +117,19 @@ public class IntegratedMain {
             """);
     }
 
-    private static String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
         }
-        return second;
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isGlmModel(String model) {
+        return model != null && model.trim().toLowerCase().startsWith("glm-");
     }
 }

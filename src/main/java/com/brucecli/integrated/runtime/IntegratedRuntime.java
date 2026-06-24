@@ -10,6 +10,8 @@ import com.brucecli.tool.ParallelToolCallExecutor;
 import com.brucecli.tool.CommandGuard;
 import com.brucecli.tool.GuardedHitlToolRegistry;
 import com.brucecli.llm.ChatClient;
+import com.brucecli.llm.ImageReferenceParser;
+import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.agent.memory.MemoryAwareAgent;
 import com.brucecli.agent.memory.MemoryToolRegistrar;
 import com.brucecli.memory.core.MemoryContext;
@@ -203,6 +205,7 @@ public class IntegratedRuntime implements AutoCloseable {
 
     public String run(String input) throws Exception {
         SkillInvocation invocation = skillInvocationParser.parse(input);
+        PreparedUserInput preparedInput = ImageReferenceParser.parse(invocation.task(), workspaceRoot);
         skillManager.beginTask();
         try {
             for (String skillName : invocation.skillNames()) {
@@ -213,9 +216,9 @@ public class IntegratedRuntime implements AutoCloseable {
                 skillManager.activeInstructions()
             );
             return switch (mode) {
-                case REACT -> runReact(invocation.task(), taskSystemContext);
-                case PLAN -> runPlan(invocation.task(), taskSystemContext);
-                case MULTI -> runMulti(invocation.task(), taskSystemContext);
+                case REACT -> runReact(preparedInput, taskSystemContext);
+                case PLAN -> runPlan(preparedInput.text(), taskSystemContext);
+                case MULTI -> runMulti(preparedInput.text(), taskSystemContext);
             };
         } finally {
             skillManager.endTask();
@@ -444,7 +447,7 @@ public class IntegratedRuntime implements AutoCloseable {
         }
     }
 
-    private String runReact(String input, String skillContext) throws Exception {
+    private String runReact(PreparedUserInput input, String skillContext) throws Exception {
         if (memoryEnabled) {
             return memoryAwareAgent.run(input, skillContext);
         }

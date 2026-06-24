@@ -1,7 +1,9 @@
 package com.brucecli.tool;
 
 import com.brucecli.llm.ToolCall;
+import com.brucecli.llm.ContentPart;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -11,12 +13,18 @@ public record ToolCallResult(
     ToolCall toolCall,
     String result,
     Status status,
-    long durationMillis
+    long durationMillis,
+    List<ContentPart> imageParts
 ) {
+    public ToolCallResult(ToolCall toolCall, String result, Status status, long durationMillis) {
+        this(toolCall, result, status, durationMillis, List.of());
+    }
+
     public ToolCallResult {
         Objects.requireNonNull(toolCall, "toolCall");
         Objects.requireNonNull(status, "status");
         result = result == null ? "" : result;
+        imageParts = imageParts == null ? List.of() : List.copyOf(imageParts);
         if (durationMillis < 0) {
             throw new IllegalArgumentException("durationMillis 不能小于 0");
         }
@@ -24,6 +32,15 @@ public record ToolCallResult(
 
     public static ToolCallResult success(ToolCall toolCall, String result, long durationMillis) {
         return new ToolCallResult(toolCall, result, Status.SUCCESS, durationMillis);
+    }
+
+    public static ToolCallResult success(
+        ToolCall toolCall,
+        String result,
+        long durationMillis,
+        List<ContentPart> imageParts
+    ) {
+        return new ToolCallResult(toolCall, result, Status.SUCCESS, durationMillis, imageParts);
     }
 
     public static ToolCallResult failed(ToolCall toolCall, Throwable cause, long durationMillis) {
@@ -54,6 +71,10 @@ public record ToolCallResult(
             Status.INTERRUPTED,
             0
         );
+    }
+
+    public boolean hasImageParts() {
+        return !imageParts.isEmpty();
     }
 
     public enum Status {
