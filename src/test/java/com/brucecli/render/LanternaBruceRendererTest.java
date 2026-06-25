@@ -2,12 +2,14 @@ package com.brucecli.render;
 
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;
+import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -43,6 +45,34 @@ class LanternaBruceRendererTest {
 
             assertTrue(renderer.messageTexts().contains("❯ hello"));
             assertFalse(renderer.messageTexts().contains(LanternaBruceRenderer.inputFrameLine(40)));
+        }
+    }
+
+    @Test
+    void streamDecodesUtf8Lines() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.stream().print("中文 MCP server 已启动");
+            renderer.stream().flush();
+
+            assertTrue(renderer.messageTexts().contains("* 中文 MCP server 已启动"));
+        }
+    }
+
+    @Test
+    void cursorPositionUsesTerminalColumnWidth() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+            screen.screen().startScreen();
+            String input = "这里出现了光标";
+            int cursor = "这里出现了".length();
+
+            renderer.render(input, cursor, List.of(), 0, 0, false);
+
+            TerminalPosition position = screen.screen().getCursorPosition();
+            assertEquals(2 + LanternaBruceRenderer.displayColumnWidth("这里出现了"), position.getColumn());
+            assertEquals(21, position.getRow());
         }
     }
 

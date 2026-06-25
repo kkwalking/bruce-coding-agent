@@ -8,12 +8,14 @@ import com.brucecli.integrated.cli.StyledSpan;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.TerminalTextUtils;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -346,9 +348,13 @@ public class LanternaBruceRenderer implements BruceRenderer {
         graphics.putString(0, inputTop, inputFrameLine(columns));
         graphics.putString(0, inputBottom, inputFrameLine(columns));
         style(graphics, busy ? WARN : USER, true);
-        graphics.putString(0, inputLine, "❯ ");
-        drawHighlightedInput(graphics, 2, inputLine, columns - 2, input == null ? "" : input);
-        screen.setCursorPosition(new TerminalPosition(Math.min(columns - 1, Math.max(2, cursor + 2)), inputLine));
+        String prompt = "❯ ";
+        int promptWidth = columnWidth(prompt);
+        String value = input == null ? "" : input;
+        graphics.putString(0, inputLine, prompt);
+        drawHighlightedInput(graphics, promptWidth, inputLine, columns - promptWidth, value);
+        int cursorColumn = promptWidth + columnWidth(value.substring(0, Math.min(cursor, value.length())));
+        screen.setCursorPosition(new TerminalPosition(Math.min(columns - 1, Math.max(promptWidth, cursorColumn)), inputLine));
     }
 
     private void drawHighlightedInput(TextGraphics graphics, int col, int row, int maxWidth, String input) {
@@ -358,7 +364,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
             String text = fit(span.text(), Math.max(0, maxWidth - (x - col)));
             if (!text.isEmpty()) {
                 graphics.putString(x, row, text);
-                x += text.length();
+                x += columnWidth(text);
             }
             if (x - col >= maxWidth) {
                 break;
@@ -486,15 +492,27 @@ public class LanternaBruceRenderer implements BruceRenderer {
 
     private static List<String> wrap(String text, int width) {
         String value = text == null ? "" : text;
-        if (width <= 0 || value.length() <= width) {
+        if (width <= 0 || columnWidth(value) <= width) {
             return List.of(value);
         }
         List<String> result = new ArrayList<>();
-        int index = 0;
-        while (index < value.length()) {
-            int end = Math.min(value.length(), index + width);
-            result.add(value.substring(index, end));
-            index = end;
+        StringBuilder line = new StringBuilder();
+        int columns = 0;
+        for (int index = 0; index < value.length();) {
+            int codePoint = value.codePointAt(index);
+            String character = new String(Character.toChars(codePoint));
+            int characterWidth = Math.max(0, columnWidth(character));
+            if (!line.isEmpty() && columns + characterWidth > width) {
+                result.add(line.toString());
+                line.setLength(0);
+                columns = 0;
+            }
+            line.append(character);
+            columns += characterWidth;
+            index += Character.charCount(codePoint);
+        }
+        if (!line.isEmpty()) {
+            result.add(line.toString());
         }
         return result;
     }
@@ -504,15 +522,37 @@ public class LanternaBruceRenderer implements BruceRenderer {
         if (width <= 0) {
             return "";
         }
-        if (text.length() <= width) {
+        if (columnWidth(text) <= width) {
             return text;
         }
-        return text.substring(0, Math.max(0, width - 1)) + "…";
+        int maxBodyWidth = Math.max(0, width - columnWidth("…"));
+        StringBuilder builder = new StringBuilder();
+        int columns = 0;
+        for (int index = 0; index < text.length();) {
+            int codePoint = text.codePointAt(index);
+            String character = new String(Character.toChars(codePoint));
+            int characterWidth = Math.max(0, columnWidth(character));
+            if (columns + characterWidth > maxBodyWidth) {
+                break;
+            }
+            builder.append(character);
+            columns += characterWidth;
+            index += Character.charCount(codePoint);
+        }
+        return builder.append("…").toString();
     }
 
     private static String padRight(String value, int width) {
-        String text = value == null ? "" : value;
-        return fit(text + " ".repeat(Math.max(0, width - text.length())), width);
+        String text = fit(value == null ? "" : value, width);
+        return fit(text + " ".repeat(Math.max(0, width - columnWidth(text))), width);
+    }
+
+    static int displayColumnWidth(String value) {
+        return columnWidth(value);
+    }
+
+    private static int columnWidth(String value) {
+        return TerminalTextUtils.getColumnWidth(value == null ? "" : value);
     }
 
     private static String compactPath(Path path) {
@@ -561,30 +601,37 @@ public class LanternaBruceRenderer implements BruceRenderer {
     }
 
     private final class RendererOutputStream extends OutputStream {
-        private final StringBuilder buffer = new StringBuilder();
+        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
         @Override
-        public void write(int b) {
+        public synchronized void write(int b) {
             if (b == '\n') {
                 flushBuffer();
                 return;
             }
             if (b != '\r') {
-                buffer.append((char) b);
+                buffer.write(b);
             }
         }
 
         @Override
-        public void flush() {
+        public synchronized void write(byte[] bytes, int offset, int length) {
+            for (int index = offset; index < offset + length; index++) {
+                write(bytes[index]);
+            }
+        }
+
+        @Override
+        public synchronized void flush() {
             flushBuffer();
         }
 
         private void flushBuffer() {
-            if (buffer.isEmpty()) {
+            if (buffer.size() == 0) {
                 return;
             }
-            String line = buffer.toString();
-            buffer.setLength(0);
+            String line = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+            buffer.reset();
             appendActivity(line);
         }
     }
