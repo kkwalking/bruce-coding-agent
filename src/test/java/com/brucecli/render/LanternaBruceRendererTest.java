@@ -2,6 +2,7 @@ package com.brucecli.render;
 
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;
+import com.brucecli.rag.model.IndexProgress;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -22,7 +23,8 @@ class LanternaBruceRendererTest {
     void layoutKeepsInputAndStatusDockedAtBottom() {
         LanternaBruceRenderer.TuiLayout layout = LanternaBruceRenderer.layout(new TerminalSize(80, 24));
 
-        assertEquals(20, layout.messageRows());
+        assertEquals(19, layout.messageRows());
+        assertEquals(19, layout.indexStatusRow());
         assertEquals(20, layout.inputTop());
         assertEquals(21, layout.inputLine());
         assertEquals(22, layout.inputBottom());
@@ -57,6 +59,45 @@ class LanternaBruceRendererTest {
             renderer.stream().flush();
 
             assertTrue(renderer.messageTexts().contains("* 中文 MCP server 已启动"));
+        }
+    }
+
+    @Test
+    void indexProgressRendersOutsideMessages() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.updateIndexProgress(new IndexProgress(
+                "/Users/zhouzekun/code/bruce-cli",
+                190,
+                207,
+                1306,
+                9610,
+                "src/main/java/App.java",
+                2,
+                "indexing"
+            ));
+
+            assertTrue(renderer.indexProgressText().contains("RAG index: 190/207 files"));
+            assertTrue(renderer.indexProgressText().contains("warnings=2"));
+            assertTrue(renderer.messageTexts().stream().noneMatch(message -> message.contains("[index] 已处理")));
+        }
+    }
+
+    @Test
+    void indexProgressRenderingIsThrottledButClearAlwaysRenders() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+            renderer.consumeDirty();
+
+            renderer.updateIndexProgress(indexProgress(1));
+            assertTrue(renderer.consumeDirty());
+
+            renderer.updateIndexProgress(indexProgress(2));
+            assertFalse(renderer.consumeDirty());
+
+            renderer.updateIndexProgress(null);
+            assertTrue(renderer.consumeDirty());
         }
     }
 
@@ -97,6 +138,19 @@ class LanternaBruceRendererTest {
         while (!renderer.hasApprovalDialog() && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
+    }
+
+    private static IndexProgress indexProgress(int processedFiles) {
+        return new IndexProgress(
+            "/Users/zhouzekun/code/bruce-cli",
+            processedFiles,
+            207,
+            1306,
+            9610,
+            "src/main/java/App.java",
+            0,
+            "indexing"
+        );
     }
 
     private static TestScreen testScreen() throws Exception {

@@ -26,6 +26,7 @@ import com.brucecli.plan.planner.DeepSeekPlanner;
 import com.brucecli.rag.embedding.EmbeddingClient;
 import com.brucecli.rag.index.CodeIndex;
 import com.brucecli.rag.model.CodeRelation;
+import com.brucecli.rag.model.IndexProgressListener;
 import com.brucecli.rag.model.IndexStats;
 import com.brucecli.rag.search.CodeRetriever;
 import com.brucecli.rag.search.SearchResultFormatter;
@@ -311,6 +312,10 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     public IndexStats index(Path projectPath, PrintStream out) throws Exception {
+        return index(projectPath, out, null);
+    }
+
+    public IndexStats index(Path projectPath, PrintStream out, IndexProgressListener progressListener) throws Exception {
         requireRagEnabled();
         Path target = projectPath.toAbsolutePath().normalize();
         if (!Files.isDirectory(target)) {
@@ -318,7 +323,7 @@ public class IntegratedRuntime implements AutoCloseable {
         }
 
         try (VectorStore vectorStore = new VectorStore(ragDbFile)) {
-            IndexStats stats = new CodeIndex(embeddingClient, vectorStore).index(target, out);
+            IndexStats stats = new CodeIndex(embeddingClient, vectorStore).index(target, out, progressListener);
             workspaceRoot = target;
             skillManager.changeWorkspace(target);
             rebuildComponents();

@@ -34,8 +34,25 @@ cp .env.example .env
 # 如需图片输入，配置 LLM_PROVIDER=glm 和 GLM_MODEL=glm-5v
 
 mvn clean test
-mvn package
+mvn clean package
 java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
+```
+
+`mvn clean package` 会生成两个 jar：
+
+- `target/bruce-cli-1.0.0-SNAPSHOT.jar`：普通 jar，不包含依赖。
+- `target/bruce-cli-1.0.0-SNAPSHOT-all.jar`：可直接运行的 fat jar，入口为 `com.brucecli.integrated.cli.IntegratedMain`。
+
+打包完成后可直接启动：
+
+```bash
+java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
+```
+
+也可以一条命令完成打包并启动：
+
+```bash
+mvn clean package && java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 ```
 
 程序以当前目录作为默认工具工作区。长期记忆和 RAG 索引默认保存在：

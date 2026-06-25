@@ -171,7 +171,9 @@ public class BruceTuiApp implements AutoCloseable {
         renderer.appendUserMessage(submitted);
         busy = true;
         renderer.updateStatus(status("running"));
-        renderer.appendActivity("思考中...");
+        if (!isIndexCommand(submitted)) {
+            renderer.appendActivity("思考中...");
+        }
         executor.submit(() -> processInput(submitted));
     }
 
@@ -192,9 +194,17 @@ public class BruceTuiApp implements AutoCloseable {
             renderer.appendSystemMessage("执行失败: " + e.getMessage());
         } finally {
             long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000;
+            if (isIndexCommand(submitted)) {
+                renderer.updateIndexProgress(null);
+            }
             busy = false;
             renderer.updateStatus(status("idle").withElapsedMillis(elapsedMillis));
         }
+    }
+
+    private static boolean isIndexCommand(String input) {
+        String value = input == null ? "" : input.trim();
+        return value.equals("/index") || value.startsWith("/index ");
     }
 
     private List<CompletionItem> completions() {

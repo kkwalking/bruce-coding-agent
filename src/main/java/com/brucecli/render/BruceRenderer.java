@@ -1,5 +1,7 @@
 package com.brucecli.render;
 
+import com.brucecli.rag.model.IndexProgress;
+
 import java.io.PrintStream;
 
 public interface BruceRenderer extends AutoCloseable {
@@ -20,6 +22,9 @@ public interface BruceRenderer extends AutoCloseable {
     void appendActivity(String message);
 
     void updateStatus(BruceStatusInfo status);
+
+    default void updateIndexProgress(IndexProgress progress) {
+    }
 
     String inputPrompt();
 

@@ -76,7 +76,11 @@ public class IntegratedMain {
                     Path.of(System.getProperty("user.home")),
                     renderer.stream()
                 )) {
-                    IntegratedCommandProcessor commands = new IntegratedCommandProcessor(runtime, renderer.stream());
+                    IntegratedCommandProcessor commands = new IntegratedCommandProcessor(
+                        runtime,
+                        renderer.stream(),
+                        renderer::updateIndexProgress
+                    );
                     new BruceTuiApp(
                         screen,
                         renderer,

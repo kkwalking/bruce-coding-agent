@@ -3,6 +3,7 @@ package com.brucecli.integrated.cli;
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.memory.model.MemoryEntry;
+import com.brucecli.rag.model.IndexProgressListener;
 import com.brucecli.skill.SkillDefinition;
 import com.brucecli.skill.SkillLoadResult;
 import picocli.CommandLine;
@@ -21,10 +22,20 @@ import java.util.concurrent.Callable;
 public class IntegratedCommandProcessor {
     private final IntegratedRuntime runtime;
     private final PrintStream out;
+    private final IndexProgressListener indexProgressListener;
 
     public IntegratedCommandProcessor(IntegratedRuntime runtime, PrintStream out) {
+        this(runtime, out, null);
+    }
+
+    public IntegratedCommandProcessor(
+        IntegratedRuntime runtime,
+        PrintStream out,
+        IndexProgressListener indexProgressListener
+    ) {
         this.runtime = runtime;
         this.out = out;
+        this.indexProgressListener = indexProgressListener;
     }
 
     public CommandResult handle(String input) {
@@ -39,7 +50,7 @@ public class IntegratedCommandProcessor {
             return CommandResult.notHandled();
         }
 
-        SlashRoot root = new SlashRoot(runtime, out);
+        SlashRoot root = new SlashRoot(runtime, out, indexProgressListener);
         CommandLine commandLine = new CommandLine(root)
             .setCaseInsensitiveEnumValuesAllowed(true)
             .setUnmatchedArgumentsAllowed(false);
@@ -138,11 +149,13 @@ public class IntegratedCommandProcessor {
     private static class SlashRoot implements Runnable {
         private final IntegratedRuntime runtime;
         private final PrintStream out;
+        private final IndexProgressListener indexProgressListener;
         private CommandResult result = CommandResult.notHandled();
 
-        SlashRoot(IntegratedRuntime runtime, PrintStream out) {
+        SlashRoot(IntegratedRuntime runtime, PrintStream out, IndexProgressListener indexProgressListener) {
             this.runtime = runtime;
             this.out = out;
+            this.indexProgressListener = indexProgressListener;
         }
 
         @Override
@@ -353,7 +366,7 @@ public class IntegratedCommandProcessor {
         @Override
         public Void call() throws Exception {
             Path target = path == null ? root.runtime.workspaceRoot() : path;
-            root.handled(root.runtime.index(target, root.out).toDisplayString());
+            root.handled(root.runtime.index(target, root.out, root.indexProgressListener).toDisplayString());
             return null;
         }
     }

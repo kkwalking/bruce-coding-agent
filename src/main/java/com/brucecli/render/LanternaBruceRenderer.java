@@ -5,6 +5,7 @@ import com.brucecli.approval.ApprovalResult;
 import com.brucecli.integrated.cli.BruceSyntaxHighlighter;
 import com.brucecli.integrated.cli.CompletionItem;
 import com.brucecli.integrated.cli.StyledSpan;
+import com.brucecli.rag.model.IndexProgress;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
@@ -27,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LanternaBruceRenderer implements BruceRenderer {
+    private static final long INDEX_PROGRESS_RENDER_INTERVAL_NANOS = 100_000_000L;
     private static final TextColor.ANSI BASE = TextColor.ANSI.DEFAULT;
     private static final TextColor.ANSI DIM = TextColor.ANSI.WHITE;
     private static final TextColor.ANSI BRAND = TextColor.ANSI.YELLOW_BRIGHT;
@@ -41,7 +43,11 @@ public class LanternaBruceRenderer implements BruceRenderer {
     private final PrintStream stream;
     private final AtomicBoolean dirty = new AtomicBoolean(true);
     private BruceStatusInfo currentStatus;
+    private IndexProgress indexProgress;
     private ApprovalDialog approvalDialog;
+    private int lastColumns = -1;
+    private int lastRows = -1;
+    private long lastIndexProgressRenderNanos;
     private boolean closed;
 
     public LanternaBruceRenderer(Screen screen) {
@@ -101,6 +107,21 @@ public class LanternaBruceRenderer implements BruceRenderer {
     }
 
     @Override
+    public void updateIndexProgress(IndexProgress progress) {
+        boolean shouldRender;
+        synchronized (lock) {
+            indexProgress = progress;
+            shouldRender = shouldRenderIndexProgress(progress);
+            if (shouldRender) {
+                lastIndexProgressRenderNanos = System.nanoTime();
+            }
+        }
+        if (shouldRender) {
+            markDirty();
+        }
+    }
+
+    @Override
     public String inputPrompt() {
         return "❯ ";
     }
@@ -128,12 +149,14 @@ public class LanternaBruceRenderer implements BruceRenderer {
         int inputBottom = rows - 2;
         int inputLine = rows - 3;
         int inputTop = rows - 4;
-        int messageRows = Math.max(1, inputTop);
+        int indexStatusRow = rows - 5;
+        int messageRows = Math.max(1, indexStatusRow);
 
-        screen.clear();
         TextGraphics graphics = screen.newTextGraphics();
+        prepareCanvas(graphics, columns, rows);
         drawMessages(graphics, columns, messageRows, scrollOffset);
-        drawCompletions(graphics, columns, inputTop, completions, selectedCompletion);
+        drawCompletions(graphics, columns, indexStatusRow, completions, selectedCompletion);
+        drawIndexProgress(graphics, columns, indexStatusRow);
         drawInput(graphics, columns, inputTop, inputLine, inputBottom, input, cursor, busy);
         drawStatus(graphics, columns, statusRow);
         drawApproval(graphics, columns, rows);
@@ -239,7 +262,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
 
     public static TuiLayout layout(TerminalSize size) {
         int rows = Math.max(8, size.getRows());
-        return new TuiLayout(Math.max(1, rows - 4), rows - 4, rows - 3, rows - 2, rows - 1);
+        return new TuiLayout(Math.max(1, rows - 5), rows - 5, rows - 4, rows - 3, rows - 2, rows - 1);
     }
 
     @Override
@@ -256,6 +279,32 @@ public class LanternaBruceRenderer implements BruceRenderer {
         }
         markDirty();
         dialog.future.complete(result);
+    }
+
+    private boolean shouldRenderIndexProgress(IndexProgress progress) {
+        if (progress == null) {
+            return true;
+        }
+        if (!"indexing".equals(progress.phase())) {
+            return true;
+        }
+        long now = System.nanoTime();
+        return lastIndexProgressRenderNanos == 0
+            || now - lastIndexProgressRenderNanos >= INDEX_PROGRESS_RENDER_INTERVAL_NANOS;
+    }
+
+    private void prepareCanvas(TextGraphics graphics, int columns, int rows) {
+        if (columns != lastColumns || rows != lastRows) {
+            screen.clear();
+            lastColumns = columns;
+            lastRows = rows;
+            return;
+        }
+        style(graphics, BASE, false);
+        String blank = " ".repeat(Math.max(1, columns));
+        for (int row = 0; row < rows; row++) {
+            graphics.putString(0, row, blank);
+        }
     }
 
     private void appendRaw(List<String> lines) {
@@ -309,19 +358,19 @@ public class LanternaBruceRenderer implements BruceRenderer {
     private void drawCompletions(
         TextGraphics graphics,
         int columns,
-        int inputTop,
+        int indexStatusRow,
         List<CompletionItem> completions,
         int selectedCompletion
     ) {
-        if (completions == null || completions.isEmpty() || inputTop <= 1) {
+        if (completions == null || completions.isEmpty() || indexStatusRow <= 1) {
             return;
         }
         int visible = Math.min(6, completions.size());
-        int top = Math.max(0, inputTop - visible - 1);
+        int top = Math.max(0, indexStatusRow - visible - 1);
         int width = Math.min(columns, 72);
         style(graphics, DIM, false);
         graphics.putString(0, top, fit("┌" + "─".repeat(Math.max(0, width - 2)) + "┐", columns));
-        for (int i = 0; i < visible && top + i + 1 < inputTop; i++) {
+        for (int i = 0; i < visible && top + i + 1 < indexStatusRow; i++) {
             CompletionItem item = completions.get(i);
             boolean selected = i == selectedCompletion;
             style(graphics, selected ? TextColor.ANSI.BLACK : INFO, selected);
@@ -370,6 +419,37 @@ public class LanternaBruceRenderer implements BruceRenderer {
                 break;
             }
         }
+    }
+
+    private void drawIndexProgress(TextGraphics graphics, int columns, int row) {
+        IndexProgress progress;
+        synchronized (lock) {
+            progress = indexProgress;
+        }
+        if (progress == null || row < 0) {
+            return;
+        }
+        style(graphics, INFO, false);
+        graphics.putString(0, row, fit(indexProgressText(progress), columns));
+    }
+
+    String indexProgressText() {
+        synchronized (lock) {
+            return indexProgress == null ? "" : indexProgressText(indexProgress);
+        }
+    }
+
+    private static String indexProgressText(IndexProgress progress) {
+        String currentFile = progress.currentFile().isBlank() ? progress.project() : progress.currentFile();
+        String warnings = progress.warningCount() > 0 ? " · warnings=" + progress.warningCount() : "";
+        return "RAG index: %d/%d files · chunks=%d · relations=%d%s · %s".formatted(
+            progress.processedFiles(),
+            progress.totalFiles(),
+            progress.chunks(),
+            progress.relations(),
+            warnings,
+            currentFile
+        );
     }
 
     private void drawStatus(TextGraphics graphics, int columns, int row) {
@@ -580,7 +660,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
     private record RenderLine(String text, TextColor color, boolean bold) {
     }
 
-    public record TuiLayout(int messageRows, int inputTop, int inputLine, int inputBottom, int statusRow) {
+    public record TuiLayout(int messageRows, int indexStatusRow, int inputTop, int inputLine, int inputBottom, int statusRow) {
     }
 
     private enum ApprovalMode {
