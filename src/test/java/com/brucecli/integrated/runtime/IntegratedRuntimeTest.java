@@ -126,8 +126,8 @@ class IntegratedRuntimeTest {
         try (TestContext context = context()) {
             context.runtime.saveMemory("项目默认使用 JDK 17");
 
-            assertFalse(context.commands.handle("/memory off").handled());
-            assertFalse(context.commands.handle("/memory on").handled());
+            assertTrue(context.commands.handle("/memory off").output().contains("memory 只支持"));
+            assertTrue(context.commands.handle("/memory on").output().contains("memory 只支持"));
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
             assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
             assertTrue(context.commands.handle("/memory status").output().contains("# Memory Status"));
@@ -157,7 +157,7 @@ class IntegratedRuntimeTest {
             assertTrue(list.contains("PROJECT"));
             assertTrue(context.commands.handle("/skill show java-review").output()
                 .contains("UNIQUE_REVIEW_INSTRUCTION"));
-            assertFalse(context.commands.handle("/skill use java-review").handled());
+            assertTrue(context.commands.handle("/skill use java-review").output().contains("/help"));
 
             assertEquals("first", context.runtime.run("$java-review 第一次任务"));
             assertTrue(chatClient.allMessages.get(0).stream().anyMatch(message ->

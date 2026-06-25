@@ -56,10 +56,8 @@ public class TerminalHitlHandler implements HitlHandler {
     private ApprovalResult promptUntilDecision(ApprovalRequest request) {
         for (int attempt = 0; attempt < 5; attempt++) {
             out.println("请选择操作：[y/Enter] 批准  [a] 全部放行  [n] 拒绝  [s] 跳过  [m] 修改参数");
-            out.print("> ");
-            out.flush();
 
-            String input = readLine();
+            String input = readLine("> ");
             if (input == null) {
                 return ApprovalResult.reject("输入流已结束");
             }
@@ -94,16 +92,16 @@ public class TerminalHitlHandler implements HitlHandler {
     }
 
     private String readOptionalLine(String prompt, String fallback) {
-        out.print(prompt);
-        out.flush();
-        String line = readLine();
+        String line = readLine(prompt);
         if (line == null || line.isBlank()) {
             return fallback;
         }
         return line.trim();
     }
 
-    private String readLine() {
+    private String readLine(String prompt) {
+        out.print(prompt);
+        out.flush();
         try {
             return in.readLine();
         } catch (IOException e) {

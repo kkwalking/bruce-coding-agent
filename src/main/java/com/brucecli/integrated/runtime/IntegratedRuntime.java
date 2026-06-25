@@ -91,6 +91,7 @@ public class IntegratedRuntime implements AutoCloseable {
     private final HitlHandler hitlHandler;
     private final ConcurrencyConfig concurrencyConfig;
     private final WebSearchConfig webSearchConfig;
+    private final PrintStream progressOut;
     private final McpServerManager mcpManager;
     private final String mcpStartupError;
     private final SkillManager skillManager;
@@ -171,7 +172,8 @@ public class IntegratedRuntime implements AutoCloseable {
             hitlHandler,
             webSearchConfig,
             concurrencyConfig,
-            Path.of(System.getProperty("user.home"))
+            Path.of(System.getProperty("user.home")),
+            System.out
         );
     }
 
@@ -186,6 +188,32 @@ public class IntegratedRuntime implements AutoCloseable {
         ConcurrencyConfig concurrencyConfig,
         Path skillUserHome
     ) {
+        this(
+            chatClient,
+            workspaceRoot,
+            memoryManager,
+            embeddingClient,
+            ragDbFile,
+            hitlHandler,
+            webSearchConfig,
+            concurrencyConfig,
+            skillUserHome,
+            System.out
+        );
+    }
+
+    public IntegratedRuntime(
+        ChatClient chatClient,
+        Path workspaceRoot,
+        MemoryManager memoryManager,
+        EmbeddingClient embeddingClient,
+        Path ragDbFile,
+        HitlHandler hitlHandler,
+        WebSearchConfig webSearchConfig,
+        ConcurrencyConfig concurrencyConfig,
+        Path skillUserHome,
+        PrintStream progressOut
+    ) {
         this.chatClient = chatClient;
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.memoryManager = memoryManager;
@@ -194,7 +222,8 @@ public class IntegratedRuntime implements AutoCloseable {
         this.hitlHandler = hitlHandler;
         this.concurrencyConfig = concurrencyConfig;
         this.webSearchConfig = webSearchConfig == null ? WebSearchConfig.empty() : webSearchConfig;
-        McpStartup startup = createMcpManager(this.workspaceRoot);
+        this.progressOut = progressOut == null ? System.out : progressOut;
+        McpStartup startup = createMcpManager(this.workspaceRoot, this.progressOut);
         this.mcpManager = startup.manager();
         this.mcpStartupError = startup.error();
         this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
@@ -347,6 +376,13 @@ public class IntegratedRuntime implements AutoCloseable {
         return mcpManager.logs(name);
     }
 
+    public List<String> mcpServerNames() {
+        if (mcpManager == null) {
+            return List.of();
+        }
+        return mcpManager.serverNames();
+    }
+
     public void restartMcpServer(String name) {
         requireMcpManager();
         mcpManager.restart(name);
@@ -451,7 +487,7 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     private String runMulti(String input, String taskSystemContext) throws Exception {
-        return multiAgent.execute(input, buildRagContext(input), taskSystemContext, System.out).toMarkdown();
+        return multiAgent.execute(input, buildRagContext(input), taskSystemContext, progressOut).toMarkdown();
     }
 
     private void rebuildComponents() {
@@ -601,9 +637,9 @@ public class IntegratedRuntime implements AutoCloseable {
         return searchProvider().name();
     }
 
-    private McpStartup createMcpManager(Path root) {
+    private McpStartup createMcpManager(Path root, PrintStream progressOut) {
         try {
-            McpServerManager manager = new McpServerManager(root);
+            McpServerManager manager = new McpServerManager(root, progressOut);
             manager.startAll();
             return new McpStartup(manager, "");
         } catch (Exception e) {

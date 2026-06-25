@@ -51,6 +51,16 @@ public class McpServerManager implements AutoCloseable {
         );
     }
 
+    public McpServerManager(Path workspaceRoot, PrintStream progressOut) throws Exception {
+        this(
+            workspaceRoot,
+            new McpConfigLoader(workspaceRoot).load(),
+            new McpTransportFactory(),
+            progressOut,
+            DEFAULT_PROGRESS_INTERVAL
+        );
+    }
+
     McpServerManager(Path workspaceRoot, McpConfig config, McpTransportFactory transportFactory) {
         this(workspaceRoot, config, transportFactory, System.out, DEFAULT_PROGRESS_INTERVAL);
     }
@@ -65,7 +75,7 @@ public class McpServerManager implements AutoCloseable {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.config = config == null ? new McpConfig(List.of(), List.of()) : config;
         this.transportFactory = transportFactory;
-        this.progressOut = progressOut;
+        this.progressOut = progressOut == null ? System.out : progressOut;
         if (progressInterval == null || progressInterval.isZero() || progressInterval.isNegative()) {
             throw new IllegalArgumentException("MCP 启动进度间隔必须大于 0");
         }
@@ -165,6 +175,12 @@ public class McpServerManager implements AutoCloseable {
     public List<McpServerStatus> statuses() {
         return sortedRuntimes().stream()
             .map(McpServerRuntime::status)
+            .toList();
+    }
+
+    public List<String> serverNames() {
+        return sortedRuntimes().stream()
+            .map(runtime -> runtime.config().name())
             .toList();
     }
 
