@@ -319,9 +319,9 @@ public class BruceTuiApp implements AutoCloseable {
         }
     }
 
-    private static Path resolveHistoryFile(Path homeDir) {
+    static Path resolveHistoryFile(Path homeDir) {
         Path base = homeDir == null ? Path.of(System.getProperty("user.home")) : homeDir;
-        return base.resolve(".bruce").resolve("history").toAbsolutePath().normalize();
+        return base.resolve(".brucecli").resolve("history").toAbsolutePath().normalize();
     }
 
     private BruceStatusInfo status(String phase) {
