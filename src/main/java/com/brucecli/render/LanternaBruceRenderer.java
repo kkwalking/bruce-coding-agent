@@ -48,6 +48,8 @@ public class LanternaBruceRenderer implements BruceRenderer {
     private int lastColumns = -1;
     private int lastRows = -1;
     private long lastIndexProgressRenderNanos;
+    private int streamingAssistantIndex = -1;
+    private final StringBuilder streamingAssistant = new StringBuilder();
     private boolean closed;
 
     public LanternaBruceRenderer(Screen screen) {
@@ -94,6 +96,65 @@ public class LanternaBruceRenderer implements BruceRenderer {
     @Override
     public void appendActivity(String message) {
         append(MessageKind.ACTIVITY, "* " + nullToEmpty(message));
+    }
+
+    @Override
+    public void beginStreamingAssistantMessage() {
+        if (closed) {
+            return;
+        }
+        synchronized (lock) {
+            if (streamingAssistantIndex >= 0) {
+                return;
+            }
+            streamingAssistant.setLength(0);
+            messages.add(new TuiMessage(MessageKind.ASSISTANT, ""));
+            streamingAssistantIndex = messages.size() - 1;
+        }
+        markDirty();
+    }
+
+    @Override
+    public void appendStreamingAssistantDelta(String delta) {
+        if (closed || delta == null || delta.isEmpty()) {
+            return;
+        }
+        synchronized (lock) {
+            if (streamingAssistantIndex < 0) {
+                streamingAssistant.setLength(0);
+                messages.add(new TuiMessage(MessageKind.ASSISTANT, ""));
+                streamingAssistantIndex = messages.size() - 1;
+            }
+            streamingAssistant.append(delta);
+            messages.set(streamingAssistantIndex, new TuiMessage(MessageKind.ASSISTANT, streamingAssistant.toString()));
+        }
+        markDirty();
+    }
+
+    @Override
+    public void finishStreamingAssistantMessage(String finalText) {
+        if (closed) {
+            return;
+        }
+        String text = nullToEmpty(finalText);
+        synchronized (lock) {
+            if (streamingAssistantIndex < 0) {
+                if (!text.isBlank()) {
+                    messages.add(new TuiMessage(MessageKind.ASSISTANT, text.strip()));
+                }
+                markDirty();
+                return;
+            }
+            if (text.isBlank() && streamingAssistant.isEmpty()) {
+                messages.remove(streamingAssistantIndex);
+            } else {
+                String finalValue = text.isBlank() ? streamingAssistant.toString() : text;
+                messages.set(streamingAssistantIndex, new TuiMessage(MessageKind.ASSISTANT, finalValue.strip()));
+            }
+            streamingAssistantIndex = -1;
+            streamingAssistant.setLength(0);
+        }
+        markDirty();
     }
 
     @Override

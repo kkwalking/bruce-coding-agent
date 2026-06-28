@@ -21,6 +21,16 @@ public interface BruceRenderer extends AutoCloseable {
 
     void appendActivity(String message);
 
+    default void beginStreamingAssistantMessage() {
+    }
+
+    default void appendStreamingAssistantDelta(String delta) {
+    }
+
+    default void finishStreamingAssistantMessage(String finalText) {
+        appendAssistantMessage(finalText);
+    }
+
     void updateStatus(BruceStatusInfo status);
 
     default void updateIndexProgress(IndexProgress progress) {

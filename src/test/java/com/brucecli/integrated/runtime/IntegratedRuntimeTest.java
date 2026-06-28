@@ -3,6 +3,8 @@ package com.brucecli.integrated.runtime;
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;
 import com.brucecli.approval.HitlHandler;
+import com.brucecli.event.BruceEvent;
+import com.brucecli.event.BruceEvents;
 import com.brucecli.runtime.ConcurrencyConfig;
 import com.brucecli.tool.CommandGuard;
 import com.brucecli.tool.GuardedHitlToolRegistry;
@@ -18,6 +20,7 @@ import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.rag.embedding.EmbeddingClient;
+import com.brucecli.rag.model.IndexProgress;
 import com.brucecli.web.search.WebSearchConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -147,6 +151,66 @@ class IntegratedRuntimeTest {
     }
 
     @Test
+    void runtimePublishesRunMessageModeAndSessionEvents() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(text("event answer"));
+        try (TestContext context = context(chatClient)) {
+            List<BruceEvent> events = new ArrayList<>();
+            context.runtime.subscribe(events::add);
+
+            assertEquals("event answer", context.runtime.run("事件测试"));
+            context.runtime.switchMode(AgentMode.PLAN);
+            context.runtime.newSession();
+
+            assertTrue(events.stream().anyMatch(BruceEvents.RunStarted.class::isInstance));
+            assertTrue(events.stream().anyMatch(BruceEvents.RunCompleted.class::isInstance));
+            assertTrue(events.stream().anyMatch(BruceEvents.ModeChanged.class::isInstance));
+            assertTrue(events.stream().anyMatch(BruceEvents.SessionChanged.class::isInstance));
+            assertTrue(events.stream()
+                .filter(BruceEvents.MessageCompleted.class::isInstance)
+                .map(BruceEvents.MessageCompleted.class::cast)
+                .anyMatch(event -> event.durable() && "user".equals(event.message().role())));
+            assertTrue(events.stream()
+                .filter(BruceEvents.MessageCompleted.class::isInstance)
+                .map(BruceEvents.MessageCompleted.class::cast)
+                .anyMatch(event -> event.durable() && "assistant".equals(event.message().role())));
+        }
+    }
+
+    @Test
+    void indexPublishesProgressToListenerAndEventStream() throws Exception {
+        Path project = tempDir.resolve("project");
+        Path source = project.resolve("src/main/java/demo/LoginService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, """
+            package demo;
+            public class LoginService {
+                public boolean login(String user) {
+                    return user != null;
+                }
+            }
+            """);
+
+        try (TestContext context = context()) {
+            List<BruceEvent> events = new ArrayList<>();
+            List<IndexProgress> progressEvents = new ArrayList<>();
+            context.runtime.subscribe(events::add);
+            context.runtime.setRagEnabled(true);
+
+            context.runtime.index(
+                project,
+                new PrintStream(OutputStream.nullOutputStream()),
+                progressEvents::add
+            );
+
+            assertTrue(progressEvents.stream().anyMatch(progress -> "done".equals(progress.phase())));
+            assertTrue(events.stream()
+                .filter(BruceEvents.IndexProgressUpdated.class::isInstance)
+                .map(BruceEvents.IndexProgressUpdated.class::cast)
+                .anyMatch(event -> "done".equals(event.progress().phase())));
+        }
+    }
+
+    @Test
     void planModeRecordsTopLevelTranscriptInSession() throws Exception {
         CapturingChatClient chatClient = new CapturingChatClient(text("""
             {
@@ -169,6 +233,35 @@ class IntegratedRuntimeTest {
             assertTrue(messages.stream().anyMatch(message ->
                 "assistant".equals(message.role()) && message.content().contains("# 执行报告")
             ));
+        }
+    }
+
+    @Test
+    void planModePublishesOnlyTopLevelDurableMessages() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(text("""
+            {
+              "goal": "分析",
+              "tasks": [
+                {"id": "t1", "description": "分析目标", "type": "ANALYSIS", "dependencies": []}
+              ]
+            }
+            """));
+        try (TestContext context = context(chatClient)) {
+            List<BruceEvents.MessageCompleted> completed = new ArrayList<>();
+            context.runtime.subscribe(event -> {
+                if (event instanceof BruceEvents.MessageCompleted messageCompleted) {
+                    completed.add(messageCompleted);
+                }
+            });
+            context.commands.handle("/plan");
+
+            context.runtime.run("分析项目");
+
+            List<String> durableRoles = completed.stream()
+                .filter(BruceEvents.MessageCompleted::durable)
+                .map(event -> event.message().role())
+                .toList();
+            assertEquals(List.of("user", "assistant"), durableRoles);
         }
     }
 

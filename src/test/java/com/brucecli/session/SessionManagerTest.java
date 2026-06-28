@@ -1,5 +1,6 @@
 package com.brucecli.session;
 
+import com.brucecli.event.BruceEvents;
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.llm.ContentPart;
 import com.brucecli.llm.Message;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -104,6 +106,48 @@ class SessionManagerTest {
         manager.selectLeaf(rootLeaf);
 
         assertEquals(AgentMode.REACT, manager.context(AgentMode.REACT).mode());
+    }
+
+    @Test
+    void customEntriesAreReloadedButOnlyCustomMessagesEnterContext() throws Exception {
+        Path home = tempDir.resolve("home");
+        Path workspace = tempDir.resolve("workspace");
+        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+
+        manager.appendMessage(Message.user("root"));
+        manager.appendCustomEntry("artifact_index", Map.of("count", 2));
+        manager.appendCustomMessage("retrieval", "检索上下文", false, Map.of("source", "test"));
+        manager.appendSessionInfo("学习会话");
+
+        SessionManager reloaded = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+
+        assertEquals(List.of("root", "检索上下文"), reloaded.buildMessages().stream()
+            .map(Message::content)
+            .toList());
+        String tree = reloaded.renderTree(AgentMode.REACT);
+        assertTrue(tree.contains("custom artifact_index"));
+        assertTrue(tree.contains("custom_message 检索上下文"));
+        assertTrue(tree.contains("session_info 学习会话"));
+    }
+
+    @Test
+    void sessionEventRecorderPersistsOnlyDurableCompletedMessages() throws Exception {
+        Path home = tempDir.resolve("home");
+        Path workspace = tempDir.resolve("workspace");
+        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionEventRecorder recorder = new SessionEventRecorder(manager, ignored -> {
+        });
+
+        recorder.onEvent(new BruceEvents.MessageDelta("run", "assistant", "content", "delta"));
+        recorder.onEvent(new BruceEvents.MessageCompleted("run", Message.assistant("临时错误"), false));
+        recorder.onEvent(new BruceEvents.MessageCompleted("run", Message.user("持久用户消息"), true));
+
+        assertEquals(List.of("持久用户消息"), manager.buildMessages().stream()
+            .map(Message::content)
+            .toList());
+        String raw = Files.readString(manager.currentFile());
+        assertFalse(raw.contains("delta"));
+        assertFalse(raw.contains("临时错误"));
     }
 
     @Test

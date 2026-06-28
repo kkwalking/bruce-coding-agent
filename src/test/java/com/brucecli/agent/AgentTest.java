@@ -1,5 +1,7 @@
 package com.brucecli.agent;
 
+import com.brucecli.event.BruceEvent;
+import com.brucecli.event.BruceEvents;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.ContentPart;
@@ -63,6 +65,72 @@ class AgentTest {
     }
 
     @Test
+    void emitsStreamingAssistantEventsForPlainReactTurn() throws Exception {
+        List<BruceEvent> events = new ArrayList<>();
+        Agent agent = new Agent(
+            new StreamingChatClient(new ChatResponse("你好 Bruce", List.of()), List.of("你好 ", "Bruce")),
+            ToolRegistry.empty(tempDir),
+            memoryManager(),
+            "",
+            toolCalls -> List.of(),
+            events::add
+        );
+
+        String answer = agent.run("你好", "", "run-plain");
+
+        assertEquals("你好 Bruce", answer);
+        assertEquals(List.of(
+            "message:user",
+            "message_started:assistant",
+            "delta:content:你好 ",
+            "delta:content:Bruce",
+            "message:assistant"
+        ), eventSequence(events));
+        assertTrue(events.stream()
+            .filter(BruceEvents.MessageCompleted.class::isInstance)
+            .map(BruceEvents.MessageCompleted.class::cast)
+            .map(BruceEvents.MessageCompleted::message)
+            .noneMatch(message -> "system".equals(message.role())));
+    }
+
+    @Test
+    void emitsToolLifecycleEventsInProtocolOrder() throws Exception {
+        List<BruceEvent> events = new ArrayList<>();
+        Queue<ChatResponse> responses = new ArrayDeque<>();
+        responses.add(new ChatResponse(
+            "",
+            List.of(new ToolCall(
+                "call-1",
+                new FunctionCall("write_file", "{\"path\":\"demo.txt\",\"content\":\"Hello\"}")
+            ))
+        ));
+        responses.add(new ChatResponse("文件已经写好。", List.of()));
+        ToolRegistry toolRegistry = new ToolRegistry(tempDir);
+        Agent agent = new Agent(
+            new QueueChatClient(responses),
+            toolRegistry,
+            memoryManager(),
+            "",
+            ToolCallExecutor.serial(toolRegistry),
+            events::add
+        );
+
+        assertEquals("文件已经写好。", agent.run("写文件", "", "run-tool"));
+
+        assertEquals(List.of(
+            "message:user",
+            "message_started:assistant",
+            "message:assistant",
+            "tool_started:write_file",
+            "tool_completed:write_file",
+            "message:tool",
+            "message_started:assistant",
+            "delta:content:文件已经写好。",
+            "message:assistant"
+        ), eventSequence(events));
+    }
+
+    @Test
     void prunesHistoricalImageContentBeforeNextModelCall() throws Exception {
         RecordingChatClient chatClient = new RecordingChatClient(
             new ChatResponse("第一张已处理。", List.of()),
@@ -106,6 +174,31 @@ class AgentTest {
         );
     }
 
+    private static List<String> eventSequence(List<BruceEvent> events) {
+        return events.stream()
+            .map(AgentTest::eventLabel)
+            .toList();
+    }
+
+    private static String eventLabel(BruceEvent event) {
+        if (event instanceof BruceEvents.MessageCompleted completed) {
+            return "message:" + completed.message().role();
+        }
+        if (event instanceof BruceEvents.MessageStarted started) {
+            return "message_started:" + started.role();
+        }
+        if (event instanceof BruceEvents.MessageDelta delta) {
+            return "delta:" + delta.channel() + ":" + delta.delta();
+        }
+        if (event instanceof BruceEvents.ToolCallStarted started) {
+            return "tool_started:" + started.toolCall().function().name();
+        }
+        if (event instanceof BruceEvents.ToolCallCompleted completed) {
+            return "tool_completed:" + completed.toolCall().function().name();
+        }
+        return event.type();
+    }
+
     /**
      * 测试用的假模型客户端。
      *
@@ -143,6 +236,29 @@ class AgentTest {
             ChatResponse response = responses.poll();
             if (response == null) {
                 throw new IOException("no queued response");
+            }
+            return response;
+        }
+    }
+
+    private static class StreamingChatClient implements ChatClient {
+        private final ChatResponse response;
+        private final List<String> contentDeltas;
+
+        StreamingChatClient(ChatResponse response, List<String> contentDeltas) {
+            this.response = response;
+            this.contentDeltas = contentDeltas;
+        }
+
+        @Override
+        public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) {
+            return response;
+        }
+
+        @Override
+        public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools, StreamListener listener) {
+            for (String delta : contentDeltas) {
+                listener.onContentDelta(delta);
             }
             return response;
         }

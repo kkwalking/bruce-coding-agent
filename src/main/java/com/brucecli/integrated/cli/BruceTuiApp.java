@@ -1,9 +1,14 @@
 package com.brucecli.integrated.cli;
 
+import com.brucecli.event.BruceEvent;
+import com.brucecli.event.BruceEvents;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ChatClient;
+import com.brucecli.llm.Message;
+import com.brucecli.llm.ToolCall;
 import com.brucecli.render.BruceStatusInfo;
 import com.brucecli.render.LanternaBruceRenderer;
+import com.brucecli.tool.ToolCallResult;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
@@ -40,6 +45,8 @@ public class BruceTuiApp implements AutoCloseable {
     private int scrollOffset;
     private volatile boolean busy;
     private volatile boolean exitRequested;
+    private Runnable eventSubscription = () -> {
+    };
 
     public BruceTuiApp(
         Screen screen,
@@ -55,6 +62,7 @@ public class BruceTuiApp implements AutoCloseable {
         this.chatClient = chatClient;
         this.commands = commands;
         this.historyFile = resolveHistoryFile(homeDir);
+        this.eventSubscription = runtime.subscribe(this::handleRuntimeEvent);
     }
 
     public void run() throws IOException {
@@ -91,6 +99,7 @@ public class BruceTuiApp implements AutoCloseable {
             }
         } finally {
             saveHistory();
+            eventSubscription.run();
             executor.shutdownNow();
             renderer.close();
             screen.stopScreen();
@@ -99,6 +108,7 @@ public class BruceTuiApp implements AutoCloseable {
 
     @Override
     public void close() {
+        eventSubscription.run();
         executor.shutdownNow();
     }
 
@@ -171,9 +181,6 @@ public class BruceTuiApp implements AutoCloseable {
         renderer.appendUserMessage(submitted);
         busy = true;
         renderer.updateStatus(status("running"));
-        if (!isIndexCommand(submitted)) {
-            renderer.appendActivity("思考中...");
-        }
         executor.submit(() -> processInput(submitted));
     }
 
@@ -189,7 +196,7 @@ public class BruceTuiApp implements AutoCloseable {
                 renderer.appendSystemMessage(command.output());
                 return;
             }
-            renderer.appendAssistantMessage(runtime.run(submitted));
+            runtime.run(submitted);
         } catch (Exception e) {
             renderer.appendSystemMessage("执行失败: " + e.getMessage());
         } finally {
@@ -205,6 +212,52 @@ public class BruceTuiApp implements AutoCloseable {
     private static boolean isIndexCommand(String input) {
         String value = input == null ? "" : input.trim();
         return value.equals("/index") || value.startsWith("/index ");
+    }
+
+    private void handleRuntimeEvent(BruceEvent event) {
+        if (event instanceof BruceEvents.RunStarted) {
+            renderer.appendActivity("思考中...");
+        } else if (event instanceof BruceEvents.MessageStarted started) {
+            if ("assistant".equals(started.role())) {
+                renderer.beginStreamingAssistantMessage();
+            }
+        } else if (event instanceof BruceEvents.MessageDelta delta) {
+            if ("assistant".equals(delta.role()) && "content".equals(delta.channel())) {
+                renderer.appendStreamingAssistantDelta(delta.delta());
+            }
+        } else if (event instanceof BruceEvents.MessageCompleted completed) {
+            renderCompletedMessage(completed.message());
+        } else if (event instanceof BruceEvents.ToolCallStarted started) {
+            renderer.appendActivity("工具开始: " + toolName(started.toolCall()));
+        } else if (event instanceof BruceEvents.ToolCallCompleted completed) {
+            renderer.appendActivity(toolCompletedText(completed));
+        } else if (event instanceof BruceEvents.Activity activity) {
+            renderer.appendActivity(activity.message());
+        } else if (event instanceof BruceEvents.IndexProgressUpdated progress) {
+            renderer.updateIndexProgress(progress.progress());
+        }
+    }
+
+    private void renderCompletedMessage(Message message) {
+        if (message == null) {
+            return;
+        }
+        if ("assistant".equals(message.role())) {
+            renderer.finishStreamingAssistantMessage(message.content());
+        }
+    }
+
+    private String toolCompletedText(BruceEvents.ToolCallCompleted completed) {
+        ToolCallResult.Status status = completed.status();
+        String suffix = status == ToolCallResult.Status.SUCCESS ? "" : " " + status;
+        return "工具完成: " + toolName(completed.toolCall()) + suffix + " (" + completed.durationMillis() + "ms)";
+    }
+
+    private String toolName(ToolCall toolCall) {
+        if (toolCall == null || toolCall.function() == null) {
+            return "unknown";
+        }
+        return toolCall.function().name();
     }
 
     private List<CompletionItem> completions() {

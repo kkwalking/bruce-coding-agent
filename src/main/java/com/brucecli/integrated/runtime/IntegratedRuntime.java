@@ -1,6 +1,10 @@
 package com.brucecli.integrated.runtime;
 
 import com.brucecli.agent.Agent;
+import com.brucecli.event.BruceEvent;
+import com.brucecli.event.BruceEventBus;
+import com.brucecli.event.BruceEventListener;
+import com.brucecli.event.BruceEvents;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.approval.HitlHandler;
 import com.brucecli.runtime.ConcurrencyConfig;
@@ -27,6 +31,7 @@ import com.brucecli.plan.planner.DeepSeekPlanner;
 import com.brucecli.rag.embedding.EmbeddingClient;
 import com.brucecli.rag.index.CodeIndex;
 import com.brucecli.rag.model.CodeRelation;
+import com.brucecli.rag.model.IndexProgress;
 import com.brucecli.rag.model.IndexProgressListener;
 import com.brucecli.rag.model.IndexStats;
 import com.brucecli.rag.search.CodeRetriever;
@@ -49,6 +54,7 @@ import com.brucecli.skill.SkillLoadResult;
 import com.brucecli.skill.SkillManager;
 import com.brucecli.skill.SkillToolRegistrar;
 import com.brucecli.session.SessionContext;
+import com.brucecli.session.SessionEventRecorder;
 import com.brucecli.session.SessionManager;
 import com.brucecli.session.SessionSummary;
 import com.brucecli.tool.ToolRegistry;
@@ -98,6 +104,7 @@ public class IntegratedRuntime implements AutoCloseable {
     private final ConcurrencyConfig concurrencyConfig;
     private final WebSearchConfig webSearchConfig;
     private final PrintStream progressOut;
+    private final BruceEventBus eventBus = new BruceEventBus();
     private final McpServerManager mcpManager;
     private final String mcpStartupError;
     private final SkillManager skillManager;
@@ -235,13 +242,20 @@ public class IntegratedRuntime implements AutoCloseable {
         this.mcpStartupError = startup.error();
         this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
         this.sessionManager = SessionManager.openLatestOrCreate(skillUserHome, this.workspaceRoot, mode);
+        this.eventBus.subscribe(new SessionEventRecorder(
+            sessionManager,
+            message -> this.progressOut.println(message)
+        ));
         this.mode = sessionManager.context(AgentMode.REACT).mode();
         rebuildComponents();
+        emit(new BruceEvents.SessionChanged("startup", sessionContext()));
     }
 
     public String run(String input) throws Exception {
+        String runId = BruceEvents.newRunId();
         SkillInvocation invocation = skillInvocationParser.parse(input);
         PreparedUserInput preparedInput = ImageReferenceParser.parse(invocation.task(), workspaceRoot);
+        emit(new BruceEvents.RunStarted(runId, mode, preparedInput.text()));
         skillManager.beginTask();
         try {
             for (String skillName : invocation.skillNames()) {
@@ -251,14 +265,23 @@ public class IntegratedRuntime implements AutoCloseable {
                 skillManager.catalogPrompt(),
                 skillManager.activeInstructions()
             );
-            return switch (mode) {
-                case REACT -> runReact(preparedInput, taskSystemContext);
-                case PLAN -> runPlan(preparedInput.text(), taskSystemContext);
-                case MULTI -> runMulti(preparedInput.text(), taskSystemContext);
+            String result = switch (mode) {
+                case REACT -> runReact(preparedInput, taskSystemContext, runId);
+                case PLAN -> runPlan(preparedInput.text(), taskSystemContext, runId);
+                case MULTI -> runMulti(preparedInput.text(), taskSystemContext, runId);
             };
+            emit(new BruceEvents.RunCompleted(runId, result));
+            return result;
+        } catch (Exception exception) {
+            emit(new BruceEvents.RunFailed(runId, exception.getMessage()));
+            throw exception;
         } finally {
             skillManager.endTask();
         }
+    }
+
+    public Runnable subscribe(BruceEventListener listener) {
+        return eventBus.subscribe(listener);
     }
 
     public AgentMode mode() {
@@ -270,11 +293,7 @@ public class IntegratedRuntime implements AutoCloseable {
             return;
         }
         this.mode = mode;
-        try {
-            sessionManager.appendModeChange(mode);
-        } catch (IOException e) {
-            progressOut.println("Session 写入失败: " + e.getMessage());
-        }
+        emit(new BruceEvents.ModeChanged(mode));
     }
 
     public boolean ragEnabled() {
@@ -339,7 +358,11 @@ public class IntegratedRuntime implements AutoCloseable {
         }
 
         try (VectorStore vectorStore = new VectorStore(ragDbFile)) {
-            IndexStats stats = new CodeIndex(embeddingClient, vectorStore).index(target, out, progressListener);
+            IndexStats stats = new CodeIndex(embeddingClient, vectorStore).index(
+                target,
+                out,
+                eventingIndexProgressListener(out, progressListener)
+            );
             workspaceRoot = target;
             skillManager.changeWorkspace(target);
             try {
@@ -350,6 +373,7 @@ public class IntegratedRuntime implements AutoCloseable {
                 throw new IllegalStateException("Session 切换失败: " + e.getMessage(), e);
             }
             rebuildComponents();
+            emit(new BruceEvents.SessionChanged("workspace_changed", sessionContext()));
             return stats;
         }
     }
@@ -511,6 +535,7 @@ public class IntegratedRuntime implements AutoCloseable {
             sessionManager.createNew(mode);
             resetTransientState();
             restoreReactSessionHistory();
+            emit(new BruceEvents.SessionChanged("new", sessionContext()));
         } catch (IOException e) {
             throw new IllegalStateException("Session 创建失败: " + e.getMessage(), e);
         }
@@ -532,6 +557,7 @@ public class IntegratedRuntime implements AutoCloseable {
             } else {
                 restoreReactSessionHistory();
             }
+            emit(new BruceEvents.SessionChanged("resume", sessionContext()));
         } catch (IOException e) {
             throw new IllegalStateException("Session 恢复失败: " + e.getMessage(), e);
         }
@@ -547,6 +573,7 @@ public class IntegratedRuntime implements AutoCloseable {
             mode = sessionManager.context(AgentMode.REACT).mode();
             resetTransientState();
             restoreReactSessionHistory();
+            emit(new BruceEvents.SessionChanged("leaf_selected", sessionContext()));
         } catch (IOException e) {
             throw new IllegalStateException("Session tree 切换失败: " + e.getMessage(), e);
         }
@@ -586,25 +613,25 @@ public class IntegratedRuntime implements AutoCloseable {
         }
     }
 
-    private String runReact(PreparedUserInput input, String skillContext) throws Exception {
-        return reactAgent.run(input, skillContext);
+    private String runReact(PreparedUserInput input, String skillContext, String runId) throws Exception {
+        return reactAgent.run(input, skillContext, runId);
     }
 
-    private String runPlan(String input, String taskSystemContext) throws Exception {
-        sessionManager.appendMessage(Message.user(input));
+    private String runPlan(String input, String taskSystemContext, String runId) throws Exception {
+        emit(new BruceEvents.MessageCompleted(runId, Message.user(input), true));
         String context = buildMemoryContext(input);
         context = joinContext(context, buildRagContext(input));
         memoryManager.rememberUserMessage(input);
         String result = planAgent.run(input, context, taskSystemContext).toMarkdown();
         memoryManager.rememberAssistantMessage(result);
-        sessionManager.appendMessage(Message.assistant(result));
+        emit(new BruceEvents.MessageCompleted(runId, Message.assistant(result), true));
         return result;
     }
 
-    private String runMulti(String input, String taskSystemContext) throws Exception {
-        sessionManager.appendMessage(Message.user(input));
+    private String runMulti(String input, String taskSystemContext, String runId) throws Exception {
+        emit(new BruceEvents.MessageCompleted(runId, Message.user(input), true));
         String result = multiAgent.execute(input, buildRagContext(input), taskSystemContext, progressOut).toMarkdown();
-        sessionManager.appendMessage(Message.assistant(result));
+        emit(new BruceEvents.MessageCompleted(runId, Message.assistant(result), true));
         return result;
     }
 
@@ -644,7 +671,7 @@ public class IntegratedRuntime implements AutoCloseable {
             memoryManager,
             additionalInstructions,
             toolCallBatchExecutor(),
-            this::recordReactMessage
+            eventBus
         );
         restoreReactSessionHistory();
 
@@ -697,14 +724,6 @@ public class IntegratedRuntime implements AutoCloseable {
         }
         parallelToolCallExecutor = new ParallelToolCallExecutor(toolRegistry, concurrencyConfig);
         return parallelToolCallExecutor;
-    }
-
-    private void recordReactMessage(Message message) {
-        try {
-            sessionManager.appendMessage(message);
-        } catch (IOException e) {
-            progressOut.println("Session 写入失败: " + e.getMessage());
-        }
     }
 
     private void restoreReactSessionHistory() {
@@ -836,6 +855,35 @@ public class IntegratedRuntime implements AutoCloseable {
             parallelToolCallExecutor.close();
             parallelToolCallExecutor = null;
         }
+    }
+
+    private IndexProgressListener eventingIndexProgressListener(
+        PrintStream out,
+        IndexProgressListener progressListener
+    ) {
+        return progress -> {
+            if (progressListener != null) {
+                progressListener.onProgress(progress);
+            } else {
+                legacyIndexProgress(out, progress);
+            }
+            emit(new BruceEvents.IndexProgressUpdated(progress));
+        };
+    }
+
+    private void legacyIndexProgress(PrintStream out, IndexProgress progress) {
+        if (out == null || progress == null) {
+            return;
+        }
+        if ("indexing".equals(progress.phase())
+            && progress.processedFiles() > 0
+            && progress.processedFiles() % 10 == 0) {
+            out.printf("[index] 已处理 %d/%d 个文件%n", progress.processedFiles(), progress.totalFiles());
+        }
+    }
+
+    private void emit(BruceEvent event) {
+        eventBus.emit(event);
     }
 
     private record McpStartup(McpServerManager manager, String error) {

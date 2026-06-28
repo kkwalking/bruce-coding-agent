@@ -63,6 +63,44 @@ class LanternaBruceRendererTest {
     }
 
     @Test
+    void streamingAssistantDeltasProduceSingleFinalMessage() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.beginStreamingAssistantMessage();
+            renderer.appendStreamingAssistantDelta("你");
+            renderer.appendStreamingAssistantDelta("好");
+            renderer.finishStreamingAssistantMessage("你好");
+
+            assertEquals(List.of("你好"), renderer.messageTexts());
+        }
+    }
+
+    @Test
+    void completedAssistantWithoutDeltasStillRenders() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.finishStreamingAssistantMessage("完整回答");
+
+            assertEquals(List.of("完整回答"), renderer.messageTexts());
+        }
+    }
+
+    @Test
+    void blankStreamingAssistantIsRemovedAroundToolActivity() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.beginStreamingAssistantMessage();
+            renderer.appendActivity("工具开始: write_file");
+            renderer.finishStreamingAssistantMessage("");
+
+            assertEquals(List.of("* 工具开始: write_file"), renderer.messageTexts());
+        }
+    }
+
+    @Test
     void indexProgressRendersOutsideMessages() throws Exception {
         try (TestScreen screen = testScreen()) {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());

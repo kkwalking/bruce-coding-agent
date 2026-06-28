@@ -80,8 +80,7 @@ public class SessionManager {
 
     public synchronized List<Message> buildMessages() {
         return activePath().stream()
-            .filter(entry -> "message".equals(entry.type()))
-            .map(SessionEntry::message)
+            .map(this::messageForContext)
             .filter(message -> message != null && !"system".equals(message.role()))
             .toList();
     }
@@ -92,6 +91,31 @@ public class SessionManager {
         }
         Message persisted = message.hasImageContent() ? message.withoutImageContent() : message;
         appendBranchEntry(SessionEntry.message(newEntryId(), activeLeafId, now(), persisted));
+    }
+
+    public synchronized void appendCustomEntry(String customType, Object data) throws IOException {
+        appendBranchEntry(SessionEntry.custom(newEntryId(), activeLeafId, now(), customType, data));
+    }
+
+    public synchronized void appendCustomMessage(
+        String customType,
+        String content,
+        boolean display,
+        Object details
+    ) throws IOException {
+        appendBranchEntry(SessionEntry.customMessage(
+            newEntryId(),
+            activeLeafId,
+            now(),
+            customType,
+            content == null ? "" : content,
+            display,
+            details
+        ));
+    }
+
+    public synchronized void appendSessionInfo(String name) throws IOException {
+        appendBranchEntry(SessionEntry.sessionInfo(newEntryId(), activeLeafId, now(), name));
     }
 
     public synchronized void appendModeChange(AgentMode mode) throws IOException {
@@ -311,6 +335,19 @@ public class SessionManager {
         entries.add(entry);
     }
 
+    private Message messageForContext(SessionEntry entry) {
+        if (entry == null) {
+            return null;
+        }
+        if ("message".equals(entry.type())) {
+            return entry.message();
+        }
+        if ("custom_message".equals(entry.type())) {
+            return Message.user(entry.content());
+        }
+        return null;
+    }
+
     private void appendLine(SessionEntry entry) throws IOException {
         Files.createDirectories(sessionFile.getParent());
         try (BufferedWriter writer = Files.newBufferedWriter(
@@ -417,15 +454,33 @@ public class SessionManager {
         if ("mode_change".equals(entry.type())) {
             return "mode " + entry.mode();
         }
+        if ("custom".equals(entry.type())) {
+            return "custom " + nullToEmpty(entry.customType());
+        }
+        if ("custom_message".equals(entry.type())) {
+            return "custom_message " + labelContent(entry.content());
+        }
+        if ("session_info".equals(entry.type())) {
+            return "session_info " + labelContent(entry.name());
+        }
         Message message = entry.message();
         if (message == null) {
             return entry.type();
         }
-        String content = message.content() == null ? "" : message.content().replaceAll("\\s+", " ").trim();
+        String content = labelContent(message.content());
+        return message.role() + (content.isBlank() ? "" : " " + content);
+    }
+
+    private static String labelContent(String value) {
+        String content = value == null ? "" : value.replaceAll("\\s+", " ").trim();
         if (content.length() > 48) {
             content = content.substring(0, 45) + "...";
         }
-        return message.role() + (content.isBlank() ? "" : " " + content);
+        return content;
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private long lastModified(Path path) {

@@ -7,6 +7,8 @@ import com.brucecli.llm.Message;
 import com.brucecli.llm.MessageHistoryPruner;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.llm.ToolCall;
+import com.brucecli.event.BruceEventSink;
+import com.brucecli.event.BruceEvents;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.tool.ToolCallResult;
@@ -60,7 +62,7 @@ public class Agent {
     private final ToolCallExecutor toolCallExecutor;
     private final ReactMemoryCoordinator memoryCoordinator;
     private final String systemPrompt;
-    private final AgentTranscriptListener transcriptListener;
+    private final BruceEventSink eventSink;
 
     // conversationHistory 是 ReAct 循环的上下文载体：用户问题、模型工具调用、工具结果都会放进去。
     private final List<Message> conversationHistory = new ArrayList<>();
@@ -79,7 +81,7 @@ public class Agent {
             memoryManager,
             additionalSystemPrompt,
             toolCallExecutor,
-            AgentTranscriptListener.noop()
+            BruceEventSink.NO_OP
         );
     }
 
@@ -89,7 +91,7 @@ public class Agent {
         MemoryManager memoryManager,
         String additionalSystemPrompt,
         ToolCallExecutor toolCallExecutor,
-        AgentTranscriptListener transcriptListener
+        BruceEventSink eventSink
     ) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
@@ -99,9 +101,7 @@ public class Agent {
             ? ToolCallExecutor.serial(toolRegistry)
             : toolCallExecutor;
         this.systemPrompt = appendSystemPrompt(additionalSystemPrompt);
-        this.transcriptListener = transcriptListener == null
-            ? AgentTranscriptListener.noop()
-            : transcriptListener;
+        this.eventSink = eventSink == null ? BruceEventSink.NO_OP : eventSink;
 
         // 每个 Agent 实例启动时都先放入 system prompt，保证模型知道自己的角色和工具规则。
         clearHistory();
@@ -121,7 +121,15 @@ public class Agent {
         return run(PreparedUserInput.text(userInput), taskSystemContext);
     }
 
+    public String run(String userInput, String taskSystemContext, String runId) {
+        return run(PreparedUserInput.text(userInput), taskSystemContext, runId);
+    }
+
     public String run(PreparedUserInput userInput, String taskSystemContext) {
+        return run(userInput, taskSystemContext, BruceEvents.newRunId());
+    }
+
+    public String run(PreparedUserInput userInput, String taskSystemContext, String runId) {
         PreparedUserInput preparedInput = userInput == null ? PreparedUserInput.text("") : userInput;
         if (preparedInput.text().isBlank()) {
             return "请输入任务内容";
@@ -135,7 +143,7 @@ public class Agent {
             memoryContext = memoryCoordinator.beginTurn(preparedInput.text());
             conversationHistory.add(memoryContext);
         } catch (IOException e) {
-            return "Memory 构建失败: " + e.getMessage();
+            return nonDurableAssistant(runId, "Memory 构建失败: " + e.getMessage());
         }
         if (taskSystemContext != null && !taskSystemContext.isBlank()) {
             temporaryContext = Message.system(taskSystemContext);
@@ -143,7 +151,7 @@ public class Agent {
         }
 
         // 用户输入必须加入历史，否则模型不知道这一轮要做什么。
-        appendDurableMessage(preparedInput.message());
+        appendDurableMessage(runId, preparedInput.message());
 
         try {
             int iteration = 0;
@@ -155,7 +163,12 @@ public class Agent {
                 try {
                     MessageHistoryPruner.retainLatestImageMessage(conversationHistory);
                     // 每次都发送完整历史和完整工具清单，让模型可以基于之前的观察继续行动。
-                    response = llmClient.chat(conversationHistory, toolRegistry.getToolDefinitions());
+                    emit(new BruceEvents.MessageStarted(runId, "assistant"));
+                    response = llmClient.chat(
+                        conversationHistory,
+                        toolRegistry.getToolDefinitions(),
+                        streamListener(runId)
+                    );
                     retryCount = 0;
                 } catch (IOException e) {
                     if (retryCount < MAX_RETRIES) {
@@ -163,22 +176,26 @@ public class Agent {
                         logger.warn("[Agent] LLM 调用失败，准备重试: {}", e.getMessage());
                         continue;
                     }
-                    return "网络错误: " + e.getMessage();
+                    return nonDurableAssistant(runId, "网络错误: " + e.getMessage());
                 } catch (Exception e) {
-                    return "执行错误: " + e.getMessage();
+                    return nonDurableAssistant(runId, "执行错误: " + e.getMessage());
                 }
 
                 if (response.hasToolCalls()) {
                     // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
-                    appendDurableMessage(Message.assistant(
+                    appendDurableMessage(runId, Message.assistant(
                         response.reasoningContent(),
                         response.content(),
                         response.toolCalls()
                     ));
                     memoryCoordinator.rememberToolRequest(response.toolCalls());
+                    for (ToolCall toolCall : response.toolCalls()) {
+                        emit(new BruceEvents.ToolCallStarted(runId, toolCall));
+                    }
                     List<ToolCallResult> toolResults = toolCallExecutor.execute(response.toolCalls());
                     for (ToolCallResult toolResult : toolResults) {
                         ToolCall toolCall = toolResult.toolCall();
+                        emit(new BruceEvents.ToolCallCompleted(runId, toolResult));
                         logger.info(
                             "[Agent] 工具 {} 完成。",
                             toolCall.function().name()
@@ -187,23 +204,27 @@ public class Agent {
                         // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
                         Message toolMessage = Message.tool(toolCall.id(), toolResult.result());
                         conversationHistory.add(toolMessage);
-                        transcriptListener.onDurableMessage(durableToolMessage(toolCall, toolMessage));
+                        emit(new BruceEvents.MessageCompleted(
+                            runId,
+                            durableToolMessage(toolCall, toolMessage),
+                            true
+                        ));
                         memoryCoordinator.rememberToolResult(toolResult);
                     }
-                    appendImageToolMessages(toolResults);
+                    appendImageToolMessages(runId, toolResults);
 
                     // 工具执行完不直接返回给用户，而是继续让模型基于工具结果生成下一步或最终回答。
                     continue;
                 }
 
                 // 没有工具调用，说明模型已经给出最终回答。
-                appendDurableMessage(Message.assistant(response.reasoningContent(), response.content()));
+                appendDurableMessage(runId, Message.assistant(response.reasoningContent(), response.content()));
                 memoryCoordinator.rememberAssistantAnswer(response.content());
                 return response.content();
             }
 
             String stopped = "达到最大迭代次数限制";
-            appendDurableMessage(Message.assistant(stopped));
+            appendDurableMessage(runId, Message.assistant(stopped));
             memoryCoordinator.rememberAssistantAnswer(stopped);
             return stopped;
         } finally {
@@ -244,7 +265,21 @@ public class Agent {
         return SYSTEM_PROMPT + "\n" + additionalSystemPrompt.strip();
     }
 
-    private void appendImageToolMessages(List<ToolCallResult> toolResults) {
+    private ChatClient.StreamListener streamListener(String runId) {
+        return new ChatClient.StreamListener() {
+            @Override
+            public void onReasoningDelta(String delta) {
+                emit(new BruceEvents.MessageDelta(runId, "assistant", "reasoning", delta));
+            }
+
+            @Override
+            public void onContentDelta(String delta) {
+                emit(new BruceEvents.MessageDelta(runId, "assistant", "content", delta));
+            }
+        };
+    }
+
+    private void appendImageToolMessages(String runId, List<ToolCallResult> toolResults) {
         for (ToolCallResult result : toolResults) {
             if (!result.hasImageParts()) {
                 continue;
@@ -254,13 +289,18 @@ public class Agent {
                 "工具 " + result.toolCall().function().name() + " 返回了图片内容，请结合上面的工具文本结果分析。"
             ));
             parts.addAll(result.imageParts());
-            appendDurableMessage(Message.user(parts));
+            appendDurableMessage(runId, Message.user(parts));
         }
     }
 
-    private void appendDurableMessage(Message message) {
+    private void appendDurableMessage(String runId, Message message) {
         conversationHistory.add(message);
-        transcriptListener.onDurableMessage(message);
+        emit(new BruceEvents.MessageCompleted(runId, message, true));
+    }
+
+    private String nonDurableAssistant(String runId, String content) {
+        emit(new BruceEvents.MessageCompleted(runId, Message.assistant(content), false));
+        return content;
     }
 
     private Message durableToolMessage(ToolCall toolCall, Message toolMessage) {
@@ -290,5 +330,9 @@ public class Agent {
                 );
             }
         }
+    }
+
+    private void emit(com.brucecli.event.BruceEvent event) {
+        eventSink.emit(event);
     }
 }
