@@ -11,6 +11,7 @@ import com.brucecli.tool.CommandGuard;
 import com.brucecli.tool.GuardedHitlToolRegistry;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ImageReferenceParser;
+import com.brucecli.llm.Message;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.memory.core.MemoryContext;
 import com.brucecli.memory.core.MemoryManager;
@@ -47,8 +48,12 @@ import com.brucecli.skill.SkillInvocationParser;
 import com.brucecli.skill.SkillLoadResult;
 import com.brucecli.skill.SkillManager;
 import com.brucecli.skill.SkillToolRegistrar;
+import com.brucecli.session.SessionContext;
+import com.brucecli.session.SessionManager;
+import com.brucecli.session.SessionSummary;
 import com.brucecli.tool.ToolRegistry;
 
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -97,6 +102,7 @@ public class IntegratedRuntime implements AutoCloseable {
     private final String mcpStartupError;
     private final SkillManager skillManager;
     private final SkillInvocationParser skillInvocationParser = new SkillInvocationParser();
+    private final SessionManager sessionManager;
 
     private Path workspaceRoot;
     private AgentMode mode = AgentMode.REACT;
@@ -228,6 +234,8 @@ public class IntegratedRuntime implements AutoCloseable {
         this.mcpManager = startup.manager();
         this.mcpStartupError = startup.error();
         this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
+        this.sessionManager = SessionManager.openLatestOrCreate(skillUserHome, this.workspaceRoot, mode);
+        this.mode = sessionManager.context(AgentMode.REACT).mode();
         rebuildComponents();
     }
 
@@ -258,7 +266,15 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     public void switchMode(AgentMode mode) {
+        if (mode == null || this.mode == mode) {
+            return;
+        }
         this.mode = mode;
+        try {
+            sessionManager.appendModeChange(mode);
+        } catch (IOException e) {
+            progressOut.println("Session 写入失败: " + e.getMessage());
+        }
     }
 
     public boolean ragEnabled() {
@@ -326,6 +342,13 @@ public class IntegratedRuntime implements AutoCloseable {
             IndexStats stats = new CodeIndex(embeddingClient, vectorStore).index(target, out, progressListener);
             workspaceRoot = target;
             skillManager.changeWorkspace(target);
+            try {
+                sessionManager.changeWorkspace(target, mode);
+                mode = sessionManager.context(AgentMode.REACT).mode();
+                resetTransientState();
+            } catch (IOException e) {
+                throw new IllegalStateException("Session 切换失败: " + e.getMessage(), e);
+            }
             rebuildComponents();
             return stats;
         }
@@ -437,6 +460,98 @@ public class IntegratedRuntime implements AutoCloseable {
         );
     }
 
+    public SessionContext sessionContext() {
+        return sessionManager.context(AgentMode.REACT);
+    }
+
+    public String sessionStatus() {
+        SessionContext context = sessionContext();
+        return """
+            Session: %s
+            File: %s
+            Active leaf: %s
+            Mode: %s
+            Messages: %d
+            """.formatted(
+                context.sessionId(),
+                context.file(),
+                context.activeLeafId() == null ? "-" : context.activeLeafId(),
+                context.mode(),
+                context.messageCount()
+            ).strip();
+    }
+
+    public String sessionList() {
+        try {
+            List<SessionSummary> sessions = sessionManager.listSessions(AgentMode.REACT);
+            if (sessions.isEmpty()) {
+                return "当前工作目录还没有 session。";
+            }
+            String currentId = sessionManager.currentSessionId();
+            StringBuilder output = new StringBuilder("Sessions:\n");
+            for (SessionSummary session : sessions) {
+                output.append(session.id().equals(currentId) ? "* " : "- ")
+                    .append(session.id())
+                    .append(" mode=").append(session.mode())
+                    .append(" messages=").append(session.messageCount())
+                    .append(" updated=").append(session.updatedAt())
+                    .append('\n');
+            }
+            while (!output.isEmpty() && output.charAt(output.length() - 1) == '\n') {
+                output.setLength(output.length() - 1);
+            }
+            return output.toString();
+        } catch (IOException e) {
+            throw new IllegalStateException("Session 列表读取失败: " + e.getMessage(), e);
+        }
+    }
+
+    public void newSession() {
+        try {
+            sessionManager.createNew(mode);
+            resetTransientState();
+            restoreReactSessionHistory();
+        } catch (IOException e) {
+            throw new IllegalStateException("Session 创建失败: " + e.getMessage(), e);
+        }
+    }
+
+    public void resumeSession(String reference) {
+        try {
+            sessionManager.resume(reference);
+            Path nextWorkspace = sessionManager.workspaceRoot();
+            boolean workspaceChanged = !workspaceRoot.equals(nextWorkspace);
+            if (workspaceChanged) {
+                workspaceRoot = nextWorkspace;
+                skillManager.changeWorkspace(nextWorkspace);
+            }
+            mode = sessionManager.context(AgentMode.REACT).mode();
+            resetTransientState();
+            if (workspaceChanged) {
+                rebuildComponents();
+            } else {
+                restoreReactSessionHistory();
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Session 恢复失败: " + e.getMessage(), e);
+        }
+    }
+
+    public String sessionTree() {
+        return sessionManager.renderTree(AgentMode.REACT);
+    }
+
+    public void selectSessionLeaf(String reference) {
+        try {
+            sessionManager.selectLeaf(reference);
+            mode = sessionManager.context(AgentMode.REACT).mode();
+            resetTransientState();
+            restoreReactSessionHistory();
+        } catch (IOException e) {
+            throw new IllegalStateException("Session tree 切换失败: " + e.getMessage(), e);
+        }
+    }
+
     public List<SkillDefinition> skills() {
         return skillManager.skills();
     }
@@ -459,14 +574,7 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     public void clearSession() {
-        if (reactAgent != null) {
-            reactAgent.clearHistory();
-        }
-        memoryManager.clearShortTerm();
-        if (multiAgent != null) {
-            multiAgent.clearHistories();
-        }
-        hitlHandler.clearApprovedAll();
+        newSession();
     }
 
     @Override
@@ -483,16 +591,21 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     private String runPlan(String input, String taskSystemContext) throws Exception {
+        sessionManager.appendMessage(Message.user(input));
         String context = buildMemoryContext(input);
         context = joinContext(context, buildRagContext(input));
         memoryManager.rememberUserMessage(input);
         String result = planAgent.run(input, context, taskSystemContext).toMarkdown();
         memoryManager.rememberAssistantMessage(result);
+        sessionManager.appendMessage(Message.assistant(result));
         return result;
     }
 
     private String runMulti(String input, String taskSystemContext) throws Exception {
-        return multiAgent.execute(input, buildRagContext(input), taskSystemContext, progressOut).toMarkdown();
+        sessionManager.appendMessage(Message.user(input));
+        String result = multiAgent.execute(input, buildRagContext(input), taskSystemContext, progressOut).toMarkdown();
+        sessionManager.appendMessage(Message.assistant(result));
+        return result;
     }
 
     private void rebuildComponents() {
@@ -525,7 +638,15 @@ public class IntegratedRuntime implements AutoCloseable {
             mcpManager.registerTools(toolRegistry);
         }
 
-        reactAgent = new Agent(chatClient, toolRegistry, memoryManager, additionalInstructions, toolCallBatchExecutor());
+        reactAgent = new Agent(
+            chatClient,
+            toolRegistry,
+            memoryManager,
+            additionalInstructions,
+            toolCallBatchExecutor(),
+            this::recordReactMessage
+        );
+        restoreReactSessionHistory();
 
         ExecutionPlanExecutor executor = parallelEnabled
             ? new ParallelPlanExecutor(toolRegistry, concurrencyConfig)
@@ -576,6 +697,31 @@ public class IntegratedRuntime implements AutoCloseable {
         }
         parallelToolCallExecutor = new ParallelToolCallExecutor(toolRegistry, concurrencyConfig);
         return parallelToolCallExecutor;
+    }
+
+    private void recordReactMessage(Message message) {
+        try {
+            sessionManager.appendMessage(message);
+        } catch (IOException e) {
+            progressOut.println("Session 写入失败: " + e.getMessage());
+        }
+    }
+
+    private void restoreReactSessionHistory() {
+        if (reactAgent != null) {
+            reactAgent.restoreHistory(sessionManager.buildMessages());
+        }
+    }
+
+    private void resetTransientState() {
+        if (reactAgent != null) {
+            reactAgent.clearHistory();
+        }
+        memoryManager.clearShortTerm();
+        if (multiAgent != null) {
+            multiAgent.clearHistories();
+        }
+        hitlHandler.clearApprovedAll();
     }
 
     private String buildMemoryContext(String input) throws Exception {

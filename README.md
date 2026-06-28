@@ -60,6 +60,7 @@ mvn clean package && java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 ```text
 ~/.brucecli/memory/long_term_memory.json
 ~/.brucecli/rag/codebase.db
+~/.brucecli/sessions/--Users-zhouzekun-code-bruce-cli--/*.jsonl
 ```
 
 可通过 `BRUCECLI_MEMORY_DIR`、`BRUCECLI_RAG_DIR`，或对应 JVM 参数
@@ -101,12 +102,18 @@ $code-reviewer 审查当前代码变更
 /parallel on|off|status
 
 /status
+/session
+/sessions
+/new
+/resume <id|path>
+/tree [entryId]
 /clear
 /help
 /exit
 ```
 
 默认状态：ReAct、Memory、Web、HITL 和 Parallel 开启，RAG 关闭。
+Session 默认按当前工作目录自动恢复最近 JSONL；`/tree <entryId>` 会把 active leaf 切到历史节点，下一条输入从该节点分叉。
 
 ## 多模态图片输入
 
@@ -267,6 +274,7 @@ src/main/java/com/brucecli/
 ├── web/            联网搜索 Provider、网页抓取与正文提取
 ├── mcp/            MCP 配置、协议客户端、stdio/HTTP 传输和工具注册
 ├── skill/          Skill 扫描、选择、资源读取和任务级激活
+├── session/        append-only JSONL 会话、恢复和树形分支
 ├── approval/       HITL 审批
 ├── runtime/        运行时并发配置与线程工厂
 └── integrated/     统一运行时与 CLI

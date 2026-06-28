@@ -131,6 +131,11 @@ public class IntegratedCommandProcessor {
             Exit.class,
             Status.class,
             Clear.class,
+            Session.class,
+            Sessions.class,
+            NewSession.class,
+            Resume.class,
+            Tree.class,
             React.class,
             Plan.class,
             Multi.class,
@@ -227,7 +232,12 @@ public class IntegratedCommandProcessor {
 
                 通用:
                   /status                查看统一运行状态
-                  /clear                 清空会话状态，保留长期记忆和 RAG 索引
+                  /session               查看当前 session
+                  /sessions              列出当前工作目录最近 session
+                  /new                   新建 session
+                  /resume <id|path>      恢复指定 session
+                  /tree [entryId]        查看或切换当前 session 树节点
+                  /clear                 开启新 session，保留长期记忆和 RAG 索引
                   /help
                   /exit
                 """;
@@ -271,7 +281,68 @@ public class IntegratedCommandProcessor {
         @Override
         public void run() {
             root.runtime.clearSession();
-            root.handled("已清空临时对话、短期记忆和 HITL 本会话放行记录。");
+            root.handled("已开启新 session，并清空短期记忆、临时对话和 HITL 本会话放行记录。");
+        }
+    }
+
+    @Command(name = "session")
+    private static class Session implements Runnable {
+        @ParentCommand SlashRoot root;
+
+        @Override
+        public void run() {
+            root.handled(root.runtime.sessionStatus());
+        }
+    }
+
+    @Command(name = "sessions")
+    private static class Sessions implements Runnable {
+        @ParentCommand SlashRoot root;
+
+        @Override
+        public void run() {
+            root.handled(root.runtime.sessionList());
+        }
+    }
+
+    @Command(name = "new")
+    private static class NewSession implements Runnable {
+        @ParentCommand SlashRoot root;
+
+        @Override
+        public void run() {
+            root.runtime.newSession();
+            root.handled("已新建 session。");
+        }
+    }
+
+    @Command(name = "resume")
+    private static class Resume implements Runnable {
+        @ParentCommand SlashRoot root;
+        @Parameters(index = "0", description = "session id 前缀或 JSONL 路径")
+        private String reference;
+
+        @Override
+        public void run() {
+            root.runtime.resumeSession(reference);
+            root.handled("已恢复 session。\n" + root.runtime.sessionStatus());
+        }
+    }
+
+    @Command(name = "tree")
+    private static class Tree implements Runnable {
+        @ParentCommand SlashRoot root;
+        @Parameters(index = "0", arity = "0..1", description = "entry id 前缀")
+        private String entryId;
+
+        @Override
+        public void run() {
+            if (entryId == null || entryId.isBlank()) {
+                root.handled(root.runtime.sessionTree());
+                return;
+            }
+            root.runtime.selectSessionLeaf(entryId);
+            root.handled("已切换 active leaf。\n" + root.runtime.sessionTree());
         }
     }
 

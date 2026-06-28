@@ -18,7 +18,12 @@ final class BruceSlashCommandHints {
         hint("/parallel ", "并行执行开关和状态"),
         hint("/skill ", "Skill 管理"),
         hint("/status", "查看统一运行状态"),
-        hint("/clear", "清空会话状态"),
+        hint("/session", "查看当前 session"),
+        hint("/sessions", "列出最近 session"),
+        hint("/new", "新建 session"),
+        hint("/resume ", "恢复 session"),
+        hint("/tree ", "查看或切换 session 树"),
+        hint("/clear", "开启新 session"),
         hint("/help", "查看帮助"),
         hint("/exit", "退出 bruce")
     );
