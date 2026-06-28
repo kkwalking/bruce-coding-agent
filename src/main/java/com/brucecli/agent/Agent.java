@@ -60,6 +60,7 @@ public class Agent {
     private final ToolCallExecutor toolCallExecutor;
     private final ReactMemoryCoordinator memoryCoordinator;
     private final String systemPrompt;
+    private final AgentTranscriptListener transcriptListener;
 
     // conversationHistory 是 ReAct 循环的上下文载体：用户问题、模型工具调用、工具结果都会放进去。
     private final List<Message> conversationHistory = new ArrayList<>();
@@ -72,6 +73,24 @@ public class Agent {
         String additionalSystemPrompt,
         ToolCallExecutor toolCallExecutor
     ) {
+        this(
+            llmClient,
+            toolRegistry,
+            memoryManager,
+            additionalSystemPrompt,
+            toolCallExecutor,
+            AgentTranscriptListener.noop()
+        );
+    }
+
+    public Agent(
+        ChatClient llmClient,
+        ToolRegistry toolRegistry,
+        MemoryManager memoryManager,
+        String additionalSystemPrompt,
+        ToolCallExecutor toolCallExecutor,
+        AgentTranscriptListener transcriptListener
+    ) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.memoryCoordinator = new ReactMemoryCoordinator(memoryManager);
@@ -80,6 +99,9 @@ public class Agent {
             ? ToolCallExecutor.serial(toolRegistry)
             : toolCallExecutor;
         this.systemPrompt = appendSystemPrompt(additionalSystemPrompt);
+        this.transcriptListener = transcriptListener == null
+            ? AgentTranscriptListener.noop()
+            : transcriptListener;
 
         // 每个 Agent 实例启动时都先放入 system prompt，保证模型知道自己的角色和工具规则。
         clearHistory();
@@ -121,7 +143,7 @@ public class Agent {
         }
 
         // 用户输入必须加入历史，否则模型不知道这一轮要做什么。
-        conversationHistory.add(preparedInput.message());
+        appendDurableMessage(preparedInput.message());
 
         try {
             int iteration = 0;
@@ -148,7 +170,7 @@ public class Agent {
 
                 if (response.hasToolCalls()) {
                     // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
-                    conversationHistory.add(Message.assistant(
+                    appendDurableMessage(Message.assistant(
                         response.reasoningContent(),
                         response.content(),
                         response.toolCalls()
@@ -163,7 +185,9 @@ public class Agent {
                         );
 
                         // 工具返回值要以 tool message 的形式写回历史，下一轮模型会读取它作为 Observation。
-                        conversationHistory.add(Message.tool(toolCall.id(), toolResult.result()));
+                        Message toolMessage = Message.tool(toolCall.id(), toolResult.result());
+                        conversationHistory.add(toolMessage);
+                        transcriptListener.onDurableMessage(durableToolMessage(toolCall, toolMessage));
                         memoryCoordinator.rememberToolResult(toolResult);
                     }
                     appendImageToolMessages(toolResults);
@@ -173,12 +197,13 @@ public class Agent {
                 }
 
                 // 没有工具调用，说明模型已经给出最终回答。
-                conversationHistory.add(Message.assistant(response.reasoningContent(), response.content()));
+                appendDurableMessage(Message.assistant(response.reasoningContent(), response.content()));
                 memoryCoordinator.rememberAssistantAnswer(response.content());
                 return response.content();
             }
 
             String stopped = "达到最大迭代次数限制";
+            appendDurableMessage(Message.assistant(stopped));
             memoryCoordinator.rememberAssistantAnswer(stopped);
             return stopped;
         } finally {
@@ -199,6 +224,19 @@ public class Agent {
         conversationHistory.add(Message.system(systemPrompt));
     }
 
+    public void restoreHistory(List<Message> messages) {
+        clearHistory();
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        for (Message message : messages) {
+            if (message == null || "system".equals(message.role())) {
+                continue;
+            }
+            conversationHistory.add(message);
+        }
+    }
+
     private String appendSystemPrompt(String additionalSystemPrompt) {
         if (additionalSystemPrompt == null || additionalSystemPrompt.isBlank()) {
             return SYSTEM_PROMPT;
@@ -216,8 +254,20 @@ public class Agent {
                 "工具 " + result.toolCall().function().name() + " 返回了图片内容，请结合上面的工具文本结果分析。"
             ));
             parts.addAll(result.imageParts());
-            conversationHistory.add(Message.user(parts));
+            appendDurableMessage(Message.user(parts));
         }
+    }
+
+    private void appendDurableMessage(Message message) {
+        conversationHistory.add(message);
+        transcriptListener.onDurableMessage(message);
+    }
+
+    private Message durableToolMessage(ToolCall toolCall, Message toolMessage) {
+        if (SkillToolRegistrar.isSkillTool(toolCall.function().name())) {
+            return Message.tool(toolMessage.toolCallId(), "[Skill 内容仅对原任务有效，已从历史中移除]");
+        }
+        return toolMessage;
     }
 
     private void redactSkillToolResults() {

@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IntegratedCommandProcessorTest {
@@ -88,6 +89,29 @@ class IntegratedCommandProcessorTest {
             String unknown = context.commands().handle("/does-not-exist").output();
             assertTrue(unknown.contains("/help"));
             assertTrue(context.commands().handle("/help").output().contains("/status"));
+        }
+    }
+
+    @Test
+    void sessionCommandsExposeCreateResumeAndTreeOperations() throws Exception {
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir)) {
+            context.runtime().run("第一轮");
+            String sessionId = context.runtime().sessionContext().sessionId();
+
+            assertTrue(context.commands().handle("/session").output().contains("Session: " + sessionId));
+            assertTrue(context.commands().handle("/sessions").output().contains(sessionId));
+            assertTrue(context.commands().handle("/tree").output().contains("第一轮"));
+
+            String activeLeaf = context.runtime().sessionContext().activeLeafId();
+            assertTrue(context.commands().handle("/tree " + activeLeaf.substring(0, 10)).output()
+                .contains("已切换 active leaf"));
+
+            assertTrue(context.commands().handle("/resume " + sessionId.substring(0, 10)).output()
+                .contains("已恢复 session"));
+            assertTrue(context.commands().handle("/resume missing").output().contains("未找到 session"));
+
+            assertTrue(context.commands().handle("/new").output().contains("已新建 session"));
+            assertNotEquals(sessionId, context.runtime().sessionContext().sessionId());
         }
     }
 

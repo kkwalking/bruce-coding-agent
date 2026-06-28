@@ -104,6 +104,75 @@ class IntegratedRuntimeTest {
     }
 
     @Test
+    void sessionHistorySurvivesFeatureRebuild() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(
+            text("first answer"),
+            text("second answer")
+        );
+        try (TestContext context = context(chatClient)) {
+            assertEquals("first answer", context.runtime.run("第一轮"));
+
+            context.commands.handle("/web off");
+            assertEquals("second answer", context.runtime.run("第二轮"));
+
+            List<Message> secondTurn = chatClient.allMessages.get(1);
+            assertTrue(secondTurn.stream().anyMatch(message ->
+                "user".equals(message.role()) && "第一轮".equals(message.content())
+            ));
+            assertTrue(secondTurn.stream().anyMatch(message ->
+                "assistant".equals(message.role()) && "first answer".equals(message.content())
+            ));
+        }
+    }
+
+    @Test
+    void sessionHistorySurvivesRuntimeRestart() throws Exception {
+        CapturingChatClient firstClient = new CapturingChatClient(text("saved answer"));
+        try (TestContext context = context(firstClient)) {
+            assertEquals("saved answer", context.runtime.run("保存这一轮"));
+        }
+
+        CapturingChatClient secondClient = new CapturingChatClient(text("resumed answer"));
+        try (TestContext context = context(secondClient)) {
+            assertEquals("resumed answer", context.runtime.run("继续"));
+
+            List<Message> resumedTurn = secondClient.allMessages.get(0);
+            assertTrue(resumedTurn.stream().anyMatch(message ->
+                "user".equals(message.role()) && "保存这一轮".equals(message.content())
+            ));
+            assertTrue(resumedTurn.stream().anyMatch(message ->
+                "assistant".equals(message.role()) && "saved answer".equals(message.content())
+            ));
+        }
+    }
+
+    @Test
+    void planModeRecordsTopLevelTranscriptInSession() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(text("""
+            {
+              "goal": "分析",
+              "tasks": [
+                {"id": "t1", "description": "分析目标", "type": "ANALYSIS", "dependencies": []}
+              ]
+            }
+            """));
+        try (TestContext context = context(chatClient)) {
+            context.commands.handle("/plan");
+
+            String result = context.runtime.run("分析项目");
+
+            assertTrue(result.contains("# 执行报告"));
+            List<Message> messages = context.runtime.sessionContext().messages();
+            assertTrue(messages.stream().anyMatch(message ->
+                "user".equals(message.role()) && "分析项目".equals(message.content())
+            ));
+            assertTrue(messages.stream().anyMatch(message ->
+                "assistant".equals(message.role()) && message.content().contains("# 执行报告")
+            ));
+        }
+    }
+
+    @Test
     void ragSwitchControlsCommandsToolAndPrompt() throws Exception {
         try (TestContext context = context()) {
             String disabled = context.commands.handle("/index " + tempDir).output();

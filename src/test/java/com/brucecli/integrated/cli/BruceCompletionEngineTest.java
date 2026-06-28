@@ -20,6 +20,8 @@ class BruceCompletionEngineTest {
             List<String> topLevel = values(BruceCompletionEngine.complete("/", 1, context.runtime()));
             assertTrue(topLevel.contains("/help"));
             assertTrue(topLevel.contains("/status"));
+            assertTrue(topLevel.contains("/session"));
+            assertTrue(topLevel.contains("/tree "));
 
             List<String> ragActions = values(BruceCompletionEngine.complete("/rag ", 5, context.runtime()));
             assertTrue(ragActions.contains("on"));
