@@ -1,11 +1,10 @@
-package com.brucecli.render;
+package com.brucecli.tui;
 
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;
-import com.brucecli.integrated.cli.BruceSyntaxHighlighter;
-import com.brucecli.integrated.cli.CompletionItem;
-import com.brucecli.integrated.cli.StyledSpan;
 import com.brucecli.rag.model.IndexProgress;
+import com.brucecli.render.BruceRenderer;
+import com.brucecli.render.BruceStatusInfo;
 import com.googlecode.lanterna.SGR;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;

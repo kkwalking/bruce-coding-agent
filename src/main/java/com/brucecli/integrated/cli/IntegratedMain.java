@@ -1,6 +1,5 @@
 package com.brucecli.integrated.cli;
 
-import com.brucecli.approval.LanternaHitlHandler;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatClientFactory;
@@ -10,8 +9,11 @@ import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.rag.embedding.EmbeddingClient;
 import com.brucecli.rag.store.VectorStore;
-import com.brucecli.render.LanternaBruceRenderer;
 import com.brucecli.runtime.ConcurrencyConfig;
+import com.brucecli.tui.BruceTuiApp;
+import com.brucecli.tui.LanternaBruceRenderer;
+import com.brucecli.tui.LanternaHitlHandler;
+import com.brucecli.tui.TuiCommandResult;
 import com.brucecli.web.search.WebSearchConfig;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
@@ -88,7 +90,10 @@ public class IntegratedMain {
                         renderer,
                         runtime,
                         chatClient,
-                        commands,
+                        input -> {
+                            CommandResult result = commands.handle(input);
+                            return new TuiCommandResult(result.handled(), result.exit(), result.output());
+                        },
                         Path.of(System.getProperty("user.home"))
                     ).run();
                 }

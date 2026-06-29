@@ -1,6 +1,6 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
-import com.brucecli.render.LanternaBruceRenderer;
+import com.brucecli.integrated.cli.IntegratedCliTestSupport;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.input.MouseAction;
@@ -39,7 +39,10 @@ class BruceTuiAppTest {
                 renderer,
                 context.runtime(),
                 context.chatClient(),
-                context.commands(),
+                input -> {
+                    var result = context.commands().handle(input);
+                    return new TuiCommandResult(result.handled(), result.exit(), result.output());
+                },
                 tempDir
             )
         ) {

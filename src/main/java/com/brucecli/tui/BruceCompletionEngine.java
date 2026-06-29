@@ -1,4 +1,4 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.skill.SkillDefinition;

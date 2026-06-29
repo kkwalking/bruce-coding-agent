@@ -1,4 +1,4 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
 import java.util.ArrayList;
 import java.util.List;

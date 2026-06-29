@@ -1,4 +1,4 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
 public record CompletionItem(
     String value,

@@ -1,4 +1,4 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
 import org.junit.jupiter.api.Test;
 

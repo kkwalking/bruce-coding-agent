@@ -1,4 +1,4 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
 import com.brucecli.event.BruceEvent;
 import com.brucecli.event.BruceEvents;
@@ -7,7 +7,6 @@ import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.Message;
 import com.brucecli.llm.ToolCall;
 import com.brucecli.render.BruceStatusInfo;
-import com.brucecli.render.LanternaBruceRenderer;
 import com.brucecli.tool.ToolCallResult;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
@@ -33,7 +32,7 @@ public class BruceTuiApp implements AutoCloseable {
     private final LanternaBruceRenderer renderer;
     private final IntegratedRuntime runtime;
     private final ChatClient chatClient;
-    private final IntegratedCommandProcessor commands;
+    private final TuiCommandHandler commands;
     private final Path historyFile;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "bruce-tui-worker");
@@ -56,7 +55,7 @@ public class BruceTuiApp implements AutoCloseable {
         LanternaBruceRenderer renderer,
         IntegratedRuntime runtime,
         ChatClient chatClient,
-        IntegratedCommandProcessor commands,
+        TuiCommandHandler commands,
         Path homeDir
     ) {
         this.screen = screen;
@@ -224,7 +223,7 @@ public class BruceTuiApp implements AutoCloseable {
     private void processInput(String submitted) {
         long startedAt = System.nanoTime();
         try {
-            CommandResult command = commands.handle(submitted);
+            TuiCommandResult command = commands.handle(submitted);
             if (command.exit()) {
                 exitRequested = true;
                 return;

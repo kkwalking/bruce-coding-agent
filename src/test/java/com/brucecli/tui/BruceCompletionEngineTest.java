@@ -1,5 +1,6 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
+import com.brucecli.integrated.cli.IntegratedCliTestSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

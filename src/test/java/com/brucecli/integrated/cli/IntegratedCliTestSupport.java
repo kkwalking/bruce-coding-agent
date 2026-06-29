@@ -24,15 +24,15 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-final class IntegratedCliTestSupport {
+public final class IntegratedCliTestSupport {
     private IntegratedCliTestSupport() {
     }
 
-    static TestContext context(Path tempDir) throws Exception {
+    public static TestContext context(Path tempDir) throws Exception {
         return context(tempDir, new PrintStream(OutputStream.nullOutputStream()));
     }
 
-    static TestContext context(Path tempDir, PrintStream out) throws Exception {
+    public static TestContext context(Path tempDir, PrintStream out) throws Exception {
         CapturingChatClient chatClient = new CapturingChatClient();
         MemoryManager memoryManager = new MemoryManager(
             new ConversationMemory(1_000),
@@ -58,7 +58,7 @@ final class IntegratedCliTestSupport {
         );
     }
 
-    static Path writeSkill(Path tempDir, String name, String description, String instructions) throws Exception {
+    public static Path writeSkill(Path tempDir, String name, String description, String instructions) throws Exception {
         Path directory = tempDir.resolve(".brucecli/skills").resolve(name);
         Files.createDirectories(directory);
         Files.writeString(directory.resolve("SKILL.md"), """
@@ -72,7 +72,7 @@ final class IntegratedCliTestSupport {
         return directory;
     }
 
-    static void writeDisabledMcpServer(Path tempDir, String name) throws Exception {
+    public static void writeDisabledMcpServer(Path tempDir, String name) throws Exception {
         Path config = tempDir.resolve(".brucecli/mcp.json");
         Files.createDirectories(config.getParent());
         Files.writeString(config, """
@@ -88,10 +88,10 @@ final class IntegratedCliTestSupport {
             """.formatted(name));
     }
 
-    record TestContext(
+    public record TestContext(
         IntegratedRuntime runtime,
         IntegratedCommandProcessor commands,
-        CapturingChatClient chatClient
+        ChatClient chatClient
     ) implements AutoCloseable {
         @Override
         public void close() {

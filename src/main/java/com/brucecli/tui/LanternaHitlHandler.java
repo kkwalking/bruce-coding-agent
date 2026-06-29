@@ -1,6 +1,8 @@
-package com.brucecli.approval;
+package com.brucecli.tui;
 
-import com.brucecli.render.LanternaBruceRenderer;
+import com.brucecli.approval.ApprovalRequest;
+import com.brucecli.approval.ApprovalResult;
+import com.brucecli.approval.HitlHandler;
 
 import java.util.HashSet;
 import java.util.Set;

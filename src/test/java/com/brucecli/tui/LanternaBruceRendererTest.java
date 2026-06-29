@@ -1,4 +1,4 @@
-package com.brucecli.render;
+package com.brucecli.tui;
 
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;

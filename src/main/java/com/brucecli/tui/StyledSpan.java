@@ -1,4 +1,4 @@
-package com.brucecli.integrated.cli;
+package com.brucecli.tui;
 
 public record StyledSpan(String text, BruceSyntaxHighlighter.Style style) {
     public StyledSpan {
