@@ -1,5 +1,6 @@
 package com.brucecli.integrated.cli;
 
+import com.brucecli.event.BruceEvents;
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.rag.model.IndexProgress;
 import org.junit.jupiter.api.Test;
@@ -154,14 +155,24 @@ class IntegratedCommandProcessorTest {
     }
 
     @Test
-    void runtimeRoutesMcpStartupProgressToInjectedOutput() throws Exception {
+    void runtimeRoutesMcpStartupProgressToActivityEvents() throws Exception {
         IntegratedCliTestSupport.writeDisabledMcpServer(tempDir, "filesystem");
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try (IntegratedCliTestSupport.TestContext ignored = IntegratedCliTestSupport.context(
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(
             tempDir,
             new PrintStream(output, true, StandardCharsets.UTF_8)
         )) {
-            assertTrue(output.toString(StandardCharsets.UTF_8).contains("启动 MCP server"));
+            List<String> activities = new ArrayList<>();
+            context.runtime().subscribe(event -> {
+                if (event instanceof BruceEvents.Activity activity) {
+                    activities.add(activity.message());
+                }
+            });
+
+            context.runtime().start();
+
+            assertTrue(activities.stream().anyMatch(message -> message.contains("启动 MCP server")));
+            assertFalse(output.toString(StandardCharsets.UTF_8).contains("启动 MCP server"));
         }
     }
 }

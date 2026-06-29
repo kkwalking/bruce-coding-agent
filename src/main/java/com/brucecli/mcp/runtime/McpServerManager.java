@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class McpServerManager implements AutoCloseable {
     public static final String TOOL_PREFIX = "mcp__";
@@ -35,7 +36,7 @@ public class McpServerManager implements AutoCloseable {
     private final Path workspaceRoot;
     private final McpConfig config;
     private final McpTransportFactory transportFactory;
-    private final PrintStream progressOut;
+    private final Consumer<String> progressReporter;
     private final Duration progressInterval;
     private final McpSchemaSanitizer schemaSanitizer = new McpSchemaSanitizer();
     private final ConcurrentHashMap<String, McpServerRuntime> runtimes = new ConcurrentHashMap<>();
@@ -56,13 +57,23 @@ public class McpServerManager implements AutoCloseable {
             workspaceRoot,
             new McpConfigLoader(workspaceRoot).load(),
             new McpTransportFactory(),
-            progressOut,
+            progressReporter(progressOut),
+            DEFAULT_PROGRESS_INTERVAL
+        );
+    }
+
+    public McpServerManager(Path workspaceRoot, Consumer<String> progressReporter) throws Exception {
+        this(
+            workspaceRoot,
+            new McpConfigLoader(workspaceRoot).load(),
+            new McpTransportFactory(),
+            progressReporter,
             DEFAULT_PROGRESS_INTERVAL
         );
     }
 
     McpServerManager(Path workspaceRoot, McpConfig config, McpTransportFactory transportFactory) {
-        this(workspaceRoot, config, transportFactory, System.out, DEFAULT_PROGRESS_INTERVAL);
+        this(workspaceRoot, config, transportFactory, progressReporter(System.out), DEFAULT_PROGRESS_INTERVAL);
     }
 
     McpServerManager(
@@ -72,10 +83,21 @@ public class McpServerManager implements AutoCloseable {
         PrintStream progressOut,
         Duration progressInterval
     ) {
+        this(workspaceRoot, config, transportFactory, progressReporter(progressOut), progressInterval);
+    }
+
+    McpServerManager(
+        Path workspaceRoot,
+        McpConfig config,
+        McpTransportFactory transportFactory,
+        Consumer<String> progressReporter,
+        Duration progressInterval
+    ) {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.config = config == null ? new McpConfig(List.of(), List.of()) : config;
         this.transportFactory = transportFactory;
-        this.progressOut = progressOut == null ? System.out : progressOut;
+        this.progressReporter = progressReporter == null ? ignored -> {
+        } : progressReporter;
         if (progressInterval == null || progressInterval.isZero() || progressInterval.isNegative()) {
             throw new IllegalArgumentException("MCP 启动进度间隔必须大于 0");
         }
@@ -91,7 +113,7 @@ public class McpServerManager implements AutoCloseable {
         if (!config.configured()) {
             return;
         }
-        progressOut.printf("🔌 启动 MCP server (%d 个)...%n", config.servers().size());
+        reportProgress("启动 MCP server (%d 个)...".formatted(config.servers().size()));
         long startedAtNanos = System.nanoTime();
         List<StartupTask> tasks = config.servers().stream()
             .map(server -> new StartupTask(
@@ -252,14 +274,24 @@ public class McpServerManager implements AutoCloseable {
         long waitedSeconds = Duration.ofNanos(System.nanoTime() - startedAtNanos).toSeconds();
         for (StartupTask task : tasks) {
             if (!task.future().isDone()) {
-                progressOut.printf(
-                    "⏳ %s %s 启动中... (已等待 %ds)%n",
-                    task.server().name(),
-                    task.server().type().name().toLowerCase(),
-                    waitedSeconds
+                reportProgress(
+                    "%s %s 启动中... (已等待 %ds)".formatted(
+                        task.server().name(),
+                        task.server().type().name().toLowerCase(),
+                        waitedSeconds
+                    )
                 );
             }
         }
+    }
+
+    private void reportProgress(String message) {
+        progressReporter.accept(message);
+    }
+
+    private static Consumer<String> progressReporter(PrintStream progressOut) {
+        PrintStream out = progressOut == null ? System.out : progressOut;
+        return out::println;
     }
 
     private List<McpServerRuntime> sortedRuntimes() {

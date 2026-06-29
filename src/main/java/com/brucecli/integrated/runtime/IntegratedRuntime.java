@@ -106,16 +106,17 @@ public class IntegratedRuntime implements AutoCloseable {
     private final PrintStream progressOut;
     private final BruceEventBus eventBus = new BruceEventBus();
     private final McpServerManager mcpManager;
-    private final String mcpStartupError;
     private final SkillManager skillManager;
     private final SkillInvocationParser skillInvocationParser = new SkillInvocationParser();
     private final SessionManager sessionManager;
 
+    private String mcpStartupError;
     private Path workspaceRoot;
     private AgentMode mode = AgentMode.REACT;
     private boolean ragEnabled;
     private boolean webEnabled = true;
     private boolean parallelEnabled = true;
+    private boolean started;
 
     private GuardedHitlToolRegistry toolRegistry;
     private ToolRegistry planningToolRegistry;
@@ -237,7 +238,7 @@ public class IntegratedRuntime implements AutoCloseable {
         this.concurrencyConfig = concurrencyConfig;
         this.webSearchConfig = webSearchConfig == null ? WebSearchConfig.empty() : webSearchConfig;
         this.progressOut = progressOut == null ? System.out : progressOut;
-        McpStartup startup = createMcpManager(this.workspaceRoot, this.progressOut);
+        McpStartup startup = createMcpManager(this.workspaceRoot);
         this.mcpManager = startup.manager();
         this.mcpStartupError = startup.error();
         this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
@@ -251,7 +252,37 @@ public class IntegratedRuntime implements AutoCloseable {
         emit(new BruceEvents.SessionChanged("startup", sessionContext()));
     }
 
+    /**
+     * 启动需要事件订阅者接收进度的运行时组件。
+     *
+     * <p>构造函数只完成轻量装配；MCP server 在这里启动，确保 TUI 等消费者已经订阅事件，
+     * 可以通过 {@link BruceEvents.Activity} 展示启动进度。</p>
+     */
+    public synchronized void start() {
+        if (started) {
+            return;
+        }
+        started = true;
+        if (mcpManager == null) {
+            if (mcpStartupError != null && !mcpStartupError.isBlank()) {
+                emit(new BruceEvents.Activity(null, "MCP 初始化失败: " + mcpStartupError));
+            }
+            return;
+        }
+        try {
+            mcpManager.startAll();
+            mcpStartupError = "";
+            rebuildComponents();
+        } catch (RuntimeException exception) {
+            mcpStartupError = exception.getMessage() == null
+                ? exception.getClass().getSimpleName()
+                : exception.getMessage();
+            emit(new BruceEvents.Activity(null, "MCP 初始化失败: " + mcpStartupError));
+        }
+    }
+
     public String run(String input) throws Exception {
+        start();
         String runId = BruceEvents.newRunId();
         SkillInvocation invocation = skillInvocationParser.parse(input);
         PreparedUserInput preparedInput = ImageReferenceParser.parse(invocation.task(), workspaceRoot);
@@ -807,10 +838,11 @@ public class IntegratedRuntime implements AutoCloseable {
         return searchProvider().name();
     }
 
-    private McpStartup createMcpManager(Path root, PrintStream progressOut) {
+    private McpStartup createMcpManager(Path root) {
         try {
-            McpServerManager manager = new McpServerManager(root, progressOut);
-            manager.startAll();
+            McpServerManager manager = new McpServerManager(root, message ->
+                emit(new BruceEvents.Activity(null, message))
+            );
             return new McpStartup(manager, "");
         } catch (Exception e) {
             return new McpStartup(null, e.getMessage());
