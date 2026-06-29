@@ -275,22 +275,4 @@ public final class BruceEvents {
         }
     }
 
-    /**
-     * 预留给扩展能力的自定义事件。
-     */
-    public record CustomEvent(
-        String runId,
-        Instant timestamp,
-        String customType,
-        Object data
-    ) implements BruceEvent {
-        public CustomEvent(String runId, String customType, Object data) {
-            this(runId, Instant.now(), customType, data);
-        }
-
-        @Override
-        public String type() {
-            return "custom";
-        }
-    }
 }

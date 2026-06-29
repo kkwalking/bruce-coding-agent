@@ -74,6 +74,9 @@ public class BruceTuiApp implements AutoCloseable {
         renderer.start();
         renderer.renderWelcome(status("idle"));
         historyIndex = history.size();
+        busy = true;
+        renderer.updateStatus(status("starting"));
+        executor.submit(this::startRuntime);
         boolean localDirty = true;
         long lastResizeCheck = 0L;
 
@@ -114,6 +117,17 @@ public class BruceTuiApp implements AutoCloseable {
     public void close() {
         eventSubscription.run();
         executor.shutdownNow();
+    }
+
+    private void startRuntime() {
+        try {
+            runtime.start();
+        } catch (RuntimeException exception) {
+            renderer.appendSystemMessage("启动失败: " + exception.getMessage());
+        } finally {
+            busy = false;
+            renderer.updateStatus(status("idle"));
+        }
     }
 
     void handleKey(KeyStroke key, List<CompletionItem> completions) {

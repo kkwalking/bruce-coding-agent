@@ -62,7 +62,7 @@ class McpServerManagerTest {
         assertEquals("called: hello", result);
         assertEquals("echo", transport.lastToolName);
         assertTrue(manager.statusTable().contains("ready"));
-        assertEquals("🔌 启动 MCP server (1 个)...\n", output.toString(StandardCharsets.UTF_8));
+        assertEquals("启动 MCP server (1 个)...\n", output.toString(StandardCharsets.UTF_8));
         manager.close();
     }
 
@@ -93,7 +93,7 @@ class McpServerManagerTest {
             Future<?> startup = caller.submit(manager::startAll);
             assertTrue(transport.initializeStarted.await(1, TimeUnit.SECONDS));
             assertTrue(waitUntil(() -> output.toString(StandardCharsets.UTF_8).contains(
-                "⏳ slow stdio 启动中... (已等待 "
+                "slow stdio 启动中... (已等待 "
             )));
 
             transport.allowInitialize.countDown();
