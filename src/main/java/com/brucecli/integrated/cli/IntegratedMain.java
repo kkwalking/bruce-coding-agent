@@ -15,6 +15,7 @@ import com.brucecli.runtime.ConcurrencyConfig;
 import com.brucecli.web.search.WebSearchConfig;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
+import com.googlecode.lanterna.terminal.MouseCaptureMode;
 
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,8 @@ import java.nio.file.Path;
 public class IntegratedMain {
     public static void main(String[] args) throws Exception {
         DefaultTerminalFactory terminalFactory = new DefaultTerminalFactory()
-            .setInputTimeout(50);
+            .setInputTimeout(50)
+            .setMouseCaptureMode(MouseCaptureMode.CLICK_RELEASE);
         try (Screen screen = terminalFactory.createScreen()) {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen);
             PrintStream originalOut = System.out;

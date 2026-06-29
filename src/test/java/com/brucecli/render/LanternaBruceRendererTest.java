@@ -88,6 +88,28 @@ class LanternaBruceRendererTest {
     }
 
     @Test
+    void messageWindowUsesScrollOffsetAndClampsToAvailableHistory() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+            renderer.appendAssistantMessage(String.join("\n",
+                "line-1",
+                "line-2",
+                "line-3",
+                "line-4",
+                "line-5",
+                "line-6",
+                "line-7",
+                "line-8"
+            ));
+
+            assertEquals(5, renderer.maxScrollOffset(80, 3));
+            assertEquals(List.of("line-6", "line-7", "line-8"), renderer.visibleMessageLineTexts(80, 3, 0));
+            assertEquals(List.of("line-4", "line-5", "line-6"), renderer.visibleMessageLineTexts(80, 3, 2));
+            assertEquals(List.of("line-1", "line-2", "line-3"), renderer.visibleMessageLineTexts(80, 3, 99));
+        }
+    }
+
+    @Test
     void blankStreamingAssistantIsRemovedAroundToolActivity() throws Exception {
         try (TestScreen screen = testScreen()) {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());

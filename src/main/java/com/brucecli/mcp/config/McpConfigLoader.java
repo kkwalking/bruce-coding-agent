@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,10 +27,16 @@ public class McpConfigLoader {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Path workspaceRoot;
     private final Map<String, String> dotenvValues;
+    private final Function<String, String> envSource;
 
     public McpConfigLoader(Path workspaceRoot) {
+        this(workspaceRoot, System::getenv);
+    }
+
+    McpConfigLoader(Path workspaceRoot, Function<String, String> envSource) {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.dotenvValues = loadDotenvValues(this.workspaceRoot);
+        this.envSource = envSource == null ? ignored -> null : envSource;
     }
 
     public McpConfig load() throws IOException {
@@ -129,12 +136,12 @@ public class McpConfigLoader {
         if ("HOME".equals(name)) {
             return System.getProperty("user.home");
         }
-        String envValue = System.getenv(name);
-        if (envValue != null) {
-            return envValue;
-        }
         String dotenvValue = dotenvValues.get(name);
-        return dotenvValue == null ? "" : dotenvValue;
+        if (dotenvValue != null) {
+            return dotenvValue;
+        }
+        String envValue = envSource.apply(name);
+        return envValue == null ? "" : envValue;
     }
 
     private Map<String, String> loadDotenvValues(Path workspaceRoot) {

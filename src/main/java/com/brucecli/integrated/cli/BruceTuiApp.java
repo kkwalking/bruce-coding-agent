@@ -11,6 +11,8 @@ import com.brucecli.render.LanternaBruceRenderer;
 import com.brucecli.tool.ToolCallResult;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
+import com.googlecode.lanterna.input.MouseAction;
+import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.screen.Screen;
 
 import java.io.IOException;
@@ -25,6 +27,7 @@ public class BruceTuiApp implements AutoCloseable {
     private static final int HISTORY_SIZE = 2_000;
     private static final int HISTORY_FILE_SIZE = 10_000;
     private static final long RESIZE_CHECK_MILLIS = 250L;
+    private static final int SCROLL_LINES = 5;
 
     private final Screen screen;
     private final LanternaBruceRenderer renderer;
@@ -83,6 +86,7 @@ public class BruceTuiApp implements AutoCloseable {
                     lastResizeCheck = now;
                 }
                 if (localDirty || resized || renderer.consumeDirty()) {
+                    scrollOffset = renderer.clampScrollOffset(scrollOffset);
                     renderer.render(input.toString(), cursor, completions(), selectedCompletion, scrollOffset, busy);
                     localDirty = false;
                 }
@@ -112,7 +116,12 @@ public class BruceTuiApp implements AutoCloseable {
         executor.shutdownNow();
     }
 
-    private void handleKey(KeyStroke key, List<CompletionItem> completions) {
+    void handleKey(KeyStroke key, List<CompletionItem> completions) {
+        if (key instanceof MouseAction mouseAction) {
+            handleMouseAction(mouseAction);
+            return;
+        }
+
         KeyType type = key.getKeyType();
         Character character = key.getCharacter();
         if (type == KeyType.Character && character != null) {
@@ -157,14 +166,27 @@ public class BruceTuiApp implements AutoCloseable {
                     nextHistory();
                 }
             }
-            case PageUp -> scrollOffset += 5;
-            case PageDown -> scrollOffset = Math.max(0, scrollOffset - 5);
+            case PageUp -> scrollBy(SCROLL_LINES);
+            case PageDown -> scrollBy(-SCROLL_LINES);
             case Tab -> applyCompletion(completions);
             case Escape -> selectedCompletion = 0;
             case EOF -> exitRequested = true;
             default -> {
             }
         }
+    }
+
+    private void handleMouseAction(MouseAction action) {
+        MouseActionType type = action.getActionType();
+        if (type == MouseActionType.SCROLL_UP) {
+            scrollBy(SCROLL_LINES);
+        } else if (type == MouseActionType.SCROLL_DOWN) {
+            scrollBy(-SCROLL_LINES);
+        }
+    }
+
+    private void scrollBy(int lines) {
+        scrollOffset = renderer.clampScrollOffset(scrollOffset + lines);
     }
 
     private void submitInput() {
@@ -178,6 +200,7 @@ public class BruceTuiApp implements AutoCloseable {
             return;
         }
         addHistory(submitted);
+        scrollOffset = 0;
         renderer.appendUserMessage(submitted);
         busy = true;
         renderer.updateStatus(status("running"));
@@ -375,6 +398,10 @@ public class BruceTuiApp implements AutoCloseable {
     static Path resolveHistoryFile(Path homeDir) {
         Path base = homeDir == null ? Path.of(System.getProperty("user.home")) : homeDir;
         return base.resolve(".brucecli").resolve("history").toAbsolutePath().normalize();
+    }
+
+    int scrollOffset() {
+        return scrollOffset;
     }
 
     private BruceStatusInfo status(String phase) {

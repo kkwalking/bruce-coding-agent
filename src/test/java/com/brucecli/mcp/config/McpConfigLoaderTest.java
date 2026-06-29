@@ -47,7 +47,10 @@ class McpConfigLoaderTest {
 
         try {
             System.setProperty("user.home", home.toString());
-            McpConfig config = new McpConfigLoader(workspace).load();
+            McpConfig config = new McpConfigLoader(
+                workspace,
+                name -> "GLM_API_KEY".equals(name) ? "glm-from-system-env" : null
+            ).load();
 
             assertEquals(2, config.servers().size());
             McpServerConfig filesystem = config.servers().stream()
@@ -89,10 +92,42 @@ class McpConfigLoaderTest {
 
         try {
             System.setProperty("user.home", home.toString());
-            McpConfig config = new McpConfigLoader(workspace).load();
+            McpConfig config = new McpConfigLoader(workspace, name -> null).load();
 
             McpServerConfig zread = config.servers().get(0);
             assertEquals("Bearer ", zread.headers().get("Authorization"));
+        } finally {
+            System.setProperty("user.home", originalHome);
+        }
+    }
+
+    @Test
+    void fallsBackToSystemEnvironmentWhenWorkspaceDotenvIsMissing() throws Exception {
+        String originalHome = System.getProperty("user.home");
+        Path home = tempDir.resolve("home-system-env");
+        Path workspace = tempDir.resolve("project-system-env");
+        Files.createDirectories(home.resolve(".brucecli"));
+        Files.createDirectories(workspace.resolve(".brucecli"));
+        Files.writeString(workspace.resolve(".brucecli/mcp.json"), """
+            {
+              "mcpServers": {
+                "zread": {
+                  "url": "https://example.com/mcp",
+                  "headers": {"Authorization": "Bearer ${GLM_API_KEY}"}
+                }
+              }
+            }
+            """);
+
+        try {
+            System.setProperty("user.home", home.toString());
+            McpConfig config = new McpConfigLoader(
+                workspace,
+                name -> "GLM_API_KEY".equals(name) ? "glm-from-system-env" : null
+            ).load();
+
+            McpServerConfig zread = config.servers().get(0);
+            assertEquals("Bearer glm-from-system-env", zread.headers().get("Authorization"));
         } finally {
             System.setProperty("user.home", originalHome);
         }

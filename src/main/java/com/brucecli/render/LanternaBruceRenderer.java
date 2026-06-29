@@ -321,6 +321,18 @@ public class LanternaBruceRenderer implements BruceRenderer {
         dirty.set(true);
     }
 
+    public int clampScrollOffset(int scrollOffset) {
+        return clampScrollOffset(scrollOffset, maxScrollOffset());
+    }
+
+    public int maxScrollOffset() {
+        TerminalSize size = screen.getTerminalSize();
+        int columns = Math.max(20, size.getColumns());
+        int rows = Math.max(8, size.getRows());
+        int messageRows = Math.max(1, rows - 5);
+        return maxScrollOffset(columns, messageRows);
+    }
+
     public static TuiLayout layout(TerminalSize size) {
         int rows = Math.max(8, size.getRows());
         return new TuiLayout(Math.max(1, rows - 5), rows - 5, rows - 4, rows - 3, rows - 2, rows - 1);
@@ -383,15 +395,31 @@ public class LanternaBruceRenderer implements BruceRenderer {
     }
 
     private void drawMessages(TextGraphics graphics, int columns, int messageRows, int scrollOffset) {
-        List<RenderLine> lines = wrappedMessageLines(columns);
-        int maxStart = Math.max(0, lines.size() - messageRows);
-        int start = Math.max(0, Math.min(maxStart, lines.size() - messageRows - Math.max(0, scrollOffset)));
+        List<RenderLine> lines = visibleMessageLines(columns, messageRows, scrollOffset);
         int row = 0;
-        for (int i = start; i < lines.size() && row < messageRows; i++, row++) {
-            RenderLine line = lines.get(i);
+        for (RenderLine line : lines) {
             style(graphics, line.color(), line.bold());
             graphics.putString(0, row, fit(line.text(), columns));
+            row++;
         }
+    }
+
+    int maxScrollOffset(int columns, int messageRows) {
+        return maxScrollOffsetForLines(wrappedMessageLines(columns).size(), messageRows);
+    }
+
+    List<String> visibleMessageLineTexts(int columns, int messageRows, int scrollOffset) {
+        return visibleMessageLines(columns, messageRows, scrollOffset).stream()
+            .map(RenderLine::text)
+            .toList();
+    }
+
+    private List<RenderLine> visibleMessageLines(int columns, int messageRows, int scrollOffset) {
+        List<RenderLine> lines = wrappedMessageLines(columns);
+        int clampedOffset = clampScrollOffset(scrollOffset, maxScrollOffsetForLines(lines.size(), messageRows));
+        int start = Math.max(0, lines.size() - messageRows - clampedOffset);
+        int end = Math.min(lines.size(), start + Math.max(0, messageRows));
+        return lines.subList(start, end);
     }
 
     private List<RenderLine> wrappedMessageLines(int columns) {
@@ -686,6 +714,14 @@ public class LanternaBruceRenderer implements BruceRenderer {
     private static String padRight(String value, int width) {
         String text = fit(value == null ? "" : value, width);
         return fit(text + " ".repeat(Math.max(0, width - columnWidth(text))), width);
+    }
+
+    private static int clampScrollOffset(int scrollOffset, int maxScrollOffset) {
+        return Math.max(0, Math.min(Math.max(0, scrollOffset), Math.max(0, maxScrollOffset)));
+    }
+
+    private static int maxScrollOffsetForLines(int lineCount, int messageRows) {
+        return Math.max(0, lineCount - Math.max(1, messageRows));
     }
 
     static int displayColumnWidth(String value) {
