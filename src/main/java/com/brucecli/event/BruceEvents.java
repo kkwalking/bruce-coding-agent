@@ -10,14 +10,31 @@ import com.brucecli.tool.ToolCallResult;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * bruce 运行时所有标准事件类型的集中定义。
+ *
+ * <p>统一放在一个类型目录中，方便开发者查找当前运行时会广播哪些事件，也避免事件模型
+ * 分散在 Agent、TUI、session 等多个包里。新增事件时优先放到这里，并保持 {@link BruceEvent#type()}
+ * 的字符串稳定。</p>
+ */
 public final class BruceEvents {
     private BruceEvents() {
     }
 
+    /**
+     * 创建一次用户任务使用的 runId。
+     */
     public static String newRunId() {
         return "r_" + UUID.randomUUID().toString().replace("-", "");
     }
 
+    /*
+     * Run lifecycle events
+     */
+
+    /**
+     * 一次用户任务开始执行。
+     */
     public record RunStarted(
         String runId,
         Instant timestamp,
@@ -34,6 +51,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 一次用户任务成功完成。
+     */
     public record RunCompleted(
         String runId,
         Instant timestamp,
@@ -49,6 +69,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 一次用户任务执行失败。
+     */
     public record RunFailed(
         String runId,
         Instant timestamp,
@@ -64,6 +87,13 @@ public final class BruceEvents {
         }
     }
 
+    /*
+     * Message stream events
+     */
+
+    /**
+     * 一条模型消息开始生成，通常用于 UI 开启流式渲染。
+     */
     public record MessageStarted(
         String runId,
         Instant timestamp,
@@ -79,6 +109,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 模型流式输出的一段增量文本。
+     */
     public record MessageDelta(
         String runId,
         Instant timestamp,
@@ -96,6 +129,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 一条完整消息已经写入运行时历史或需要被消费端展示。
+     */
     public record MessageCompleted(
         String runId,
         Instant timestamp,
@@ -112,6 +148,13 @@ public final class BruceEvents {
         }
     }
 
+    /*
+     * Tool call events
+     */
+
+    /**
+     * 模型请求的工具调用即将开始执行。
+     */
     public record ToolCallStarted(
         String runId,
         Instant timestamp,
@@ -127,6 +170,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 一个工具调用已经执行结束，包含状态、输出和耗时。
+     */
     public record ToolCallCompleted(
         String runId,
         Instant timestamp,
@@ -152,6 +198,13 @@ public final class BruceEvents {
         }
     }
 
+    /*
+     * Runtime state events
+     */
+
+    /**
+     * 当前 Agent 模式发生变化。
+     */
     public record ModeChanged(
         String runId,
         Instant timestamp,
@@ -167,6 +220,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 当前 session 上下文发生变化。
+     */
     public record SessionChanged(
         String runId,
         Instant timestamp,
@@ -183,6 +239,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 运行时产生的通用活动提示。
+     */
     public record Activity(
         String runId,
         Instant timestamp,
@@ -198,6 +257,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * RAG 索引进度发生变化。
+     */
     public record IndexProgressUpdated(
         String runId,
         Instant timestamp,
@@ -213,6 +275,9 @@ public final class BruceEvents {
         }
     }
 
+    /**
+     * 预留给扩展能力的自定义事件。
+     */
     public record CustomEvent(
         String runId,
         Instant timestamp,
