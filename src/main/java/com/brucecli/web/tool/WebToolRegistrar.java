@@ -42,7 +42,7 @@ public class WebToolRegistrar {
 
         toolRegistry.register(new Tool(
             WEB_SEARCH_TOOL,
-            "搜索互联网，获取实时信息、官方文档、新闻和网页候选链接；搜索使用 GLM_API_KEY，不使用 DEEPSEEK_API_KEY",
+            "搜索互联网，获取实时信息、官方文档、新闻和网页候选链接；配置读取自 ~/.bruce/setting.json",
             createParameters(
                 new Param("query", "string", "搜索关键词", true),
                 new Param("top_k", "integer", "返回结果数量，默认 5", false)

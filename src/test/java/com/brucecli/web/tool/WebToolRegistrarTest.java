@@ -15,7 +15,7 @@ class WebToolRegistrarTest {
     Path tempDir;
 
     @Test
-    void registersSearchAndFetchToolsWithFriendlyGlmHint() {
+    void registersSearchAndFetchToolsWithSettingsHint() {
         ToolRegistry registry = new ToolRegistry(tempDir);
 
         WebToolRegistrar.register(registry, WebSearchConfig.empty());
@@ -23,7 +23,6 @@ class WebToolRegistrarTest {
         assertTrue(registry.getToolNames().contains("web_search"));
         assertTrue(registry.getToolNames().contains("web_fetch"));
         String result = registry.executeTool("web_search", Map.of("query", "bruce coding agent"));
-        assertTrue(result.contains("GLM_API_KEY"));
-        assertTrue(result.contains("DEEPSEEK_API_KEY"));
+        assertTrue(result.contains("webSearch.zhipu.apiKey"));
     }
 }

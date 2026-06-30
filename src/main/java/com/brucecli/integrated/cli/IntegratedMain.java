@@ -9,8 +9,9 @@ import com.brucecli.memory.compress.LlmContextCompressor;
 import com.brucecli.memory.core.ConversationMemory;
 import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
+import com.brucecli.mcp.config.McpConfig;
+import com.brucecli.mcp.config.McpConfigLoader;
 import com.brucecli.rag.embedding.EmbeddingClient;
-import com.brucecli.rag.store.VectorStore;
 import com.brucecli.runtime.ConcurrencyConfig;
 import com.brucecli.tui.BruceTuiApp;
 import com.brucecli.tui.LanternaBruceRenderer;
@@ -39,13 +40,17 @@ public class IntegratedMain {
             System.setErr(tuiStream);
             try {
                 LanternaHitlHandler hitlHandler = new LanternaHitlHandler(true, renderer);
-                EnvLoader env = new EnvLoader();
+                Path workspaceRoot = Path.of("").toAbsolutePath().normalize();
+                Path userHome = Path.of(System.getProperty("user.home"));
+                BruceSettingsLoader settingsLoader = BruceSettingsLoader.defaults();
 
+                BruceSettings settings;
                 ChatClient chatClient;
+                McpConfig mcpConfig;
                 try {
-                    BruceSettingsLoader settingsLoader = BruceSettingsLoader.defaults();
-                    BruceSettings settings = settingsLoader.load();
+                    settings = settingsLoader.load();
                     chatClient = ChatClientFactory.create(settings, settingsLoader);
+                    mcpConfig = new McpConfigLoader(workspaceRoot, settings, settingsLoader.settingsFile()).load();
                 } catch (Exception exception) {
                     originalErr.println(exception.getMessage());
                     System.exit(1);
@@ -53,36 +58,25 @@ public class IntegratedMain {
                 }
                 MemoryManager memoryManager = new MemoryManager(
                     new ConversationMemory(8_000),
-                    new LongTermMemory(),
+                    new LongTermMemory(BruceSettingsLoader.resolveUserPath(settings.getStorage().getMemoryDir())),
                     new LlmContextCompressor(chatClient)
                 );
-                EmbeddingClient embeddingClient = new EmbeddingClient(
-                    env.get("EMBEDDING_PROVIDER"),
-                    env.get("EMBEDDING_MODEL"),
-                    env.get("EMBEDDING_BASE_URL"),
-                    env.get("EMBEDDING_API_KEY")
-                );
-                WebSearchConfig webSearchConfig = new WebSearchConfig(
-                    firstNonBlank(env.get("WEB_SEARCH_PROVIDER"), env.get("SEARCH_PROVIDER")),
-                    env.get("GLM_API_KEY"),
-                    env.get("GLM_SEARCH_ENGINE"),
-                    env.get("GLM_SEARCH_CONTENT_SIZE"),
-                    env.get("SERPAPI_KEY"),
-                    env.get("SEARXNG_URL"),
-                    env.get("GLM_WEB_SEARCH_ENDPOINT")
-                );
+                EmbeddingClient embeddingClient = EmbeddingClient.fromSettings(settings.getEmbedding());
+                WebSearchConfig webSearchConfig = WebSearchConfig.fromSettings(settings.getWebSearch());
+                Path ragDbFile = BruceSettingsLoader.resolveUserPath(settings.getStorage().getRagDir()).resolve("codebase.db");
 
                 try (IntegratedRuntime runtime = new IntegratedRuntime(
                     chatClient,
-                    Path.of("").toAbsolutePath().normalize(),
+                    workspaceRoot,
                     memoryManager,
                     embeddingClient,
-                    VectorStore.defaultDbPath(),
+                    ragDbFile,
                     hitlHandler,
                     webSearchConfig,
                     ConcurrencyConfig.defaults(),
-                    Path.of(System.getProperty("user.home")),
-                    renderer.stream()
+                    userHome,
+                    renderer.stream(),
+                    mcpConfig
                 )) {
                     IntegratedCommandProcessor commands = new IntegratedCommandProcessor(
                         runtime,
@@ -98,7 +92,7 @@ public class IntegratedMain {
                             CommandResult result = commands.handle(input);
                             return new TuiCommandResult(result.handled(), result.exit(), result.output());
                         },
-                        Path.of(System.getProperty("user.home"))
+                        userHome
                     ).run();
                 }
             } finally {
@@ -108,15 +102,4 @@ public class IntegratedMain {
         }
     }
 
-    private static String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
-    }
 }

@@ -40,7 +40,7 @@ public class SearxngSearchProvider implements SearchProvider {
 
     @Override
     public String unavailableHint() {
-        return "SearXNG 未配置：请设置 SEARXNG_URL，例如 http://localhost:8888。";
+        return "SearXNG 未配置：请在 ~/.bruce/setting.json 中设置 webSearch.searxng.url。";
     }
 
     @Override
@@ -54,7 +54,7 @@ public class SearxngSearchProvider implements SearchProvider {
 
         HttpUrl base = HttpUrl.parse(baseUrl);
         if (base == null) {
-            throw new IOException("SEARXNG_URL 不是合法 URL: " + baseUrl);
+            throw new IOException("webSearch.searxng.url 不是合法 URL: " + baseUrl);
         }
         HttpUrl url = base.newBuilder()
             .addPathSegment("search")

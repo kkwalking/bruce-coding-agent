@@ -1,6 +1,6 @@
 # Picocli 入门指南
 
-> 本文结合 Bruce CLI 项目的实际代码，讲解 picocli（v4.7.7）的核心概念和用法。
+> 本文结合 Bruce Coding Agent 项目的实际代码，讲解 picocli（v4.7.7）的核心概念和用法。
 
 ## 什么是 Picocli
 
@@ -34,9 +34,9 @@
 | `@ParentCommand` | 注入父命令实例（子命令获取上层依赖） |
 | `@Spec` | 注入 `CommandSpec`（可获取 picocli 元数据） |
 
-## Bruce CLI 中的实际例子
+## Bruce Coding Agent 中的实际例子
 
-Bruce CLI 的所有斜杠命令都定义在 `IntegratedCommandProcessor.java` 中，使用 picocli 的嵌套内部类模式。
+Bruce Coding Agent 的所有斜杠命令都定义在 `IntegratedCommandProcessor.java` 中，使用 picocli 的嵌套内部类模式。
 
 ### 1. 最简单的命令
 
@@ -238,7 +238,7 @@ private static class Index implements Callable<Void> {
 
 ### 6. 错误处理
 
-Bruce CLI 在构造 `CommandLine` 时注册了两个异常处理器：
+Bruce Coding Agent 在构造 `CommandLine` 时注册了两个异常处理器：
 
 ```java
 CommandLine commandLine = new CommandLine(root)
@@ -269,7 +269,7 @@ throw new CommandLine.ParameterException(
 
 ### 7. 将一个字符串解析成 picocli 参数
 
-因为 Bruce CLI 的输入是 TUI 中一整行字符串（如 `/mcp restart filesystem`），不是 `main` 函数的 `String[] args`，所以需要手动分割：
+因为 Bruce Coding Agent 的输入是 TUI 中一整行字符串（如 `/mcp restart filesystem`），不是 `main` 函数的 `String[] args`，所以需要手动分割：
 
 ```java
 // IntegratedCommandProcessor.java
@@ -291,7 +291,7 @@ commandLine.execute(toPicocliArgs(trimmed));
 
 ### 8. 根命令设计
 
-Bruce CLI 用一个 `name = ""` 的根命令容纳所有子命令：
+Bruce Coding Agent 用一个 `name = ""` 的根命令容纳所有子命令：
 
 ```java
 @Command(
@@ -366,7 +366,7 @@ commandLine.setCaseInsensitiveEnumValuesAllowed(true);
 
 ### 自动帮助（mixinStandardHelpOptions）
 
-`IntegratedCommandProcessor` 中关闭了默认帮助（因为 Bruce CLI 有自定义的 `/help`）：
+`IntegratedCommandProcessor` 中关闭了默认帮助（因为 Bruce Coding Agent 有自定义的 `/help`）：
 
 ```java
 @Command(name = "", mixinStandardHelpOptions = false, subcommands = {...})
@@ -380,7 +380,7 @@ commandLine.setCaseInsensitiveEnumValuesAllowed(true);
 
 ## 快速自定义命令模板
 
-如果你想在 Bruce CLI 中添加一个新命令，按以下模板：
+如果你想在 Bruce Coding Agent 中添加一个新命令，按以下模板：
 
 ```java
 @Command(name = "mycmd", aliases = {"mc"})
@@ -406,4 +406,4 @@ private static class MyCmd implements Runnable {
 
 - [Picocli 官方文档](https://picocli.info/)
 - [Picocli GitHub](https://github.com/remkop/picocli)
-- Bruce CLI 实现：`src/main/java/com/brucecli/integrated/cli/IntegratedCommandProcessor.java`
+- Bruce Coding Agent 实现：`src/main/java/com/brucecli/integrated/cli/IntegratedCommandProcessor.java`

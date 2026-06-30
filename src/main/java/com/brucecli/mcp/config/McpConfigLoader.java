@@ -1,189 +1,186 @@
 package com.brucecli.mcp.config;
 
+import com.brucecli.config.BruceSettings;
+import com.brucecli.config.BruceSettingsLoader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * 读取 bruce-coding-agent MCP 配置。
  *
- * <p>加载顺序：用户级 ~/.bruce/mcp.json，再读项目级 .bruce/mcp.json；
- * 同名 server 由项目级覆盖。</p>
+ * <p>MCP server 统一配置在 ~/.bruce/setting.json 的 mcp.servers 中。</p>
  */
 public class McpConfigLoader {
     private static final Pattern VARIABLE = Pattern.compile("\\$\\{([A-Za-z0-9_.-]+)}");
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final Path workspaceRoot;
-    private final Map<String, String> dotenvValues;
-    private final Function<String, String> envSource;
+    private final BruceSettingsLoader settingsLoader;
+    private final BruceSettings settingsOverride;
+    private final Path settingsFileOverride;
 
     public McpConfigLoader(Path workspaceRoot) {
-        this(workspaceRoot, System::getenv);
+        this(workspaceRoot, BruceSettingsLoader.defaults());
     }
 
-    McpConfigLoader(Path workspaceRoot, Function<String, String> envSource) {
+    public McpConfigLoader(Path workspaceRoot, BruceSettingsLoader settingsLoader) {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
-        this.dotenvValues = loadDotenvValues(this.workspaceRoot);
-        this.envSource = envSource == null ? ignored -> null : envSource;
+        this.settingsLoader = settingsLoader == null ? BruceSettingsLoader.defaults() : settingsLoader;
+        this.settingsOverride = null;
+        this.settingsFileOverride = null;
+    }
+
+    public McpConfigLoader(Path workspaceRoot, BruceSettings settings, Path settingsFile) {
+        this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
+        this.settingsLoader = null;
+        this.settingsOverride = settings == null ? new BruceSettings() : settings;
+        this.settingsFileOverride = settingsFile == null ? null : settingsFile.toAbsolutePath().normalize();
     }
 
     public McpConfig load() throws IOException {
+        BruceSettings settings = loadSettings();
+        JsonNode settingsTree = mapper.valueToTree(settings);
         Map<String, McpServerConfig> servers = new LinkedHashMap<>();
-        List<Path> loadedFiles = new ArrayList<>();
-        for (Path file : candidateFiles()) {
-            if (!Files.isRegularFile(file)) {
-                continue;
-            }
-            loadedFiles.add(file);
-            readFile(file, servers);
-        }
-        return new McpConfig(new ArrayList<>(servers.values()), loadedFiles);
-    }
-
-    public List<Path> candidateFiles() {
-        return List.of(
-            Path.of(System.getProperty("user.home"), ".bruce", "mcp.json"),
-            workspaceRoot.resolve(".bruce/mcp.json")
+        settings.getMcp().getServers().forEach((name, server) ->
+            servers.put(name, parseServer(name, server, settings, settingsTree))
         );
+        return new McpConfig(new ArrayList<>(servers.values()), loadedFiles());
     }
 
-    private void readFile(Path file, Map<String, McpServerConfig> servers) throws IOException {
-        JsonNode root = mapper.readTree(Files.readString(file, StandardCharsets.UTF_8));
-        JsonNode mcpServers = root.path("mcpServers");
-        if (!mcpServers.isObject()) {
-            return;
+    private BruceSettings loadSettings() throws IOException {
+        if (settingsOverride != null) {
+            return settingsOverride;
         }
-        mcpServers.fields().forEachRemaining(entry -> {
-            McpServerConfig config = parseServer(entry.getKey(), entry.getValue());
-            servers.put(config.name(), config);
-        });
+        return settingsLoader.load();
     }
 
-    private McpServerConfig parseServer(String name, JsonNode node) {
-        McpTransportType type = detectType(node);
-        List<String> args = new ArrayList<>();
-        JsonNode argsNode = node.path("args");
-        if (argsNode.isArray()) {
-            for (JsonNode arg : argsNode) {
-                args.add(resolve(arg.asText("")));
-            }
+    private List<Path> loadedFiles() {
+        Path file = settingsFile();
+        if (file == null || !Files.isRegularFile(file)) {
+            return List.of();
         }
+        return List.of(file);
+    }
 
+    private Path settingsFile() {
+        if (settingsFileOverride != null) {
+            return settingsFileOverride;
+        }
+        return settingsLoader == null ? null : settingsLoader.settingsFile();
+    }
+
+    private McpServerConfig parseServer(
+        String name,
+        BruceSettings.McpServerSettings node,
+        BruceSettings settings,
+        JsonNode settingsTree
+    ) {
+        BruceSettings.McpServerSettings server = node == null ? new BruceSettings.McpServerSettings() : node;
         return new McpServerConfig(
             name,
-            type,
-            resolve(node.path("command").asText("")),
-            args,
-            readStringMap(node.path("env")),
-            resolve(node.path("url").asText("")),
-            readStringMap(node.path("headers")),
-            node.path("disabled").asBoolean(false)
+            detectType(server),
+            resolve(server.getCommand(), settings, settingsTree),
+            resolveList(server.getArgs(), settings, settingsTree),
+            resolveMap(server.getEnv(), settings, settingsTree),
+            resolve(server.getUrl(), settings, settingsTree),
+            resolveMap(server.getHeaders(), settings, settingsTree),
+            server.isDisabled()
         );
     }
 
-    private McpTransportType detectType(JsonNode node) {
-        String rawType = node.path("type").asText("");
-        if (rawType.equalsIgnoreCase("http")
-            || rawType.equalsIgnoreCase("streamable_http")
-            || rawType.equalsIgnoreCase("streamable-http")) {
+    private McpTransportType detectType(BruceSettings.McpServerSettings server) {
+        String rawType = server.getType() == null ? "" : server.getType();
+        String normalized = rawType
+            .replace("-", "")
+            .replace("_", "")
+            .toLowerCase(Locale.ROOT);
+        if (normalized.equals("http") || normalized.equals("streamablehttp")) {
             return McpTransportType.HTTP;
         }
-        if (node.hasNonNull("url")) {
+        String url = server.getUrl();
+        if (url != null && !url.isBlank()) {
             return McpTransportType.HTTP;
         }
         return McpTransportType.STDIO;
     }
 
-    private Map<String, String> readStringMap(JsonNode node) {
-        if (!node.isObject()) {
-            return Map.of();
+    private List<String> resolveList(List<String> values, BruceSettings settings, JsonNode settingsTree) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
         }
-        Map<String, String> values = new LinkedHashMap<>();
-        node.fields().forEachRemaining(entry -> values.put(entry.getKey(), resolve(entry.getValue().asText(""))));
-        return values;
+        List<String> resolved = new ArrayList<>();
+        for (String value : values) {
+            resolved.add(resolve(value, settings, settingsTree));
+        }
+        return resolved;
     }
 
-    private String resolve(String raw) {
+    private Map<String, String> resolveMap(Map<String, String> values, BruceSettings settings, JsonNode settingsTree) {
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> resolved = new LinkedHashMap<>();
+        values.forEach((key, value) -> resolved.put(key, resolve(value, settings, settingsTree)));
+        return resolved;
+    }
+
+    private String resolve(String raw, BruceSettings settings, JsonNode settingsTree) {
         if (raw == null || raw.isBlank()) {
             return raw == null ? "" : raw;
         }
         Matcher matcher = VARIABLE.matcher(raw);
         StringBuffer buffer = new StringBuffer();
         while (matcher.find()) {
-            String replacement = variableValue(matcher.group(1));
+            String replacement = variableValue(matcher.group(1), settings, settingsTree);
             matcher.appendReplacement(buffer, Matcher.quoteReplacement(replacement));
         }
         matcher.appendTail(buffer);
         return buffer.toString();
     }
 
-    private String variableValue(String name) {
+    private String variableValue(String name, BruceSettings settings, JsonNode settingsTree) {
         if ("PROJECT_DIR".equals(name)) {
             return workspaceRoot.toString();
         }
         if ("HOME".equals(name)) {
             return System.getProperty("user.home");
         }
-        String dotenvValue = dotenvValues.get(name);
-        if (dotenvValue != null) {
-            return dotenvValue;
+        if (name.startsWith("variables.")) {
+            return settings.getVariables().getOrDefault(name.substring("variables.".length()), "");
         }
-        String envValue = envSource.apply(name);
-        return envValue == null ? "" : envValue;
+        String variable = settings.getVariables().get(name);
+        if (variable != null) {
+            return variable;
+        }
+        String settingsValue = settingsPathValue(name, settingsTree);
+        return settingsValue == null ? "" : settingsValue;
     }
 
-    private Map<String, String> loadDotenvValues(Path workspaceRoot) {
-        Map<String, String> values = new LinkedHashMap<>();
-        Path file = workspaceRoot.resolve(".env");
-        if (!Files.isRegularFile(file)) {
-            return values;
-        }
-        try {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                readDotenvLine(line, values);
+    private String settingsPathValue(String path, JsonNode settingsTree) {
+        JsonNode node = settingsTree;
+        for (String segment : path.split("\\.")) {
+            if (segment.isBlank() || node == null || !node.isObject()) {
+                return null;
             }
-        } catch (IOException ignored) {
-            // .env 只是变量替换辅助，读不到时保持配置加载可用。
+            node = node.get(segment);
+            if (node == null || node.isMissingNode()) {
+                return null;
+            }
         }
-        return values;
-    }
-
-    private void readDotenvLine(String line, Map<String, String> values) {
-        if (line == null) {
-            return;
+        if (node.isValueNode()) {
+            return node.asText();
         }
-        String trimmed = line.trim();
-        if (trimmed.isBlank() || trimmed.startsWith("#")) {
-            return;
-        }
-        if (trimmed.startsWith("export ")) {
-            trimmed = trimmed.substring("export ".length()).trim();
-        }
-        int split = trimmed.indexOf('=');
-        if (split <= 0) {
-            return;
-        }
-        values.put(trimmed.substring(0, split).trim(), unquote(trimmed.substring(split + 1).trim()));
-    }
-
-    private String unquote(String value) {
-        if (value.length() >= 2
-            && ((value.startsWith("\"") && value.endsWith("\""))
-            || (value.startsWith("'") && value.endsWith("'")))) {
-            return value.substring(1, value.length() - 1);
-        }
-        return value;
+        return node.toString();
     }
 }

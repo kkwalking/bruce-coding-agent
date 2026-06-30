@@ -1,5 +1,6 @@
 package com.brucecli.web.search;
 
+import com.brucecli.config.BruceSettings;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,13 +18,25 @@ class SearchProviderFactoryTest {
     }
 
     @Test
-    void zhipuProviderOnlyUsesGlmApiKey() {
+    void zhipuProviderReportsSettingsPathWhenMissingApiKey() {
         WebSearchConfig config = WebSearchConfig.empty();
         SearchProvider provider = SearchProviderFactory.create(config);
 
         assertEquals("zhipu", provider.name());
         assertFalse(provider.isReady());
-        assertTrue(provider.unavailableHint().contains("GLM_API_KEY"));
-        assertTrue(provider.unavailableHint().contains("DEEPSEEK_API_KEY"));
+        assertTrue(provider.unavailableHint().contains("webSearch.zhipu.apiKey"));
+    }
+
+    @Test
+    void createsProviderFromWebSearchSettings() {
+        BruceSettings.WebSearchSettings settings = new BruceSettings.WebSearchSettings();
+        settings.setProvider("searxng");
+        settings.getZhipu().setApiKey("zhipu-key");
+        settings.getSearxng().setUrl("http://localhost:8888");
+
+        SearchProvider provider = SearchProviderFactory.create(WebSearchConfig.fromSettings(settings));
+
+        assertEquals("searxng", provider.name());
+        assertTrue(provider.isReady());
     }
 }

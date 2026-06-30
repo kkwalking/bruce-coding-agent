@@ -34,22 +34,20 @@ Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、
 - JDK 17+
 - Maven 3.9+
 - 显式配置 `~/.bruce/setting.json` 中的 `llm.providers`
-- 可选：智谱 GLM API Key，用于联网搜索（`GLM_API_KEY`）
+- 可选：在 `~/.bruce/setting.json` 中配置 `webSearch`、`embedding`、`mcp` 等能力
 - 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置。rag功能默认关闭，可通过/rag开启。
 
 ## 构建与运行
 
 ```bash
-cp .env.example .env
-# 编辑 ~/.bruce/setting.json，配置主聊天 LLM provider 和 API Key
-# 如需联网搜索，在 .env 中额外填入 GLM_API_KEY
+# 编辑 ~/.bruce/setting.json，配置模型、搜索、Embedding、存储和 MCP
 
 mvn clean test
 mvn clean package
 java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 ```
 
-LLM 配置读取自 `~/.bruce/setting.json`：
+所有运行配置统一读取自 `~/.bruce/setting.json`：
 
 ```json
 {
@@ -69,6 +67,37 @@ LLM 配置读取自 `~/.bruce/setting.json`：
         "models": ["local-model"]
       }
     }
+  },
+  "webSearch": {
+    "provider": "zhipu",
+    "zhipu": {
+      "apiKey": "your_zhipu_key",
+      "searchEngine": "search_std",
+      "contentSize": "medium",
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/web_search"
+    },
+    "serpapi": {
+      "apiKey": ""
+    },
+    "searxng": {
+      "url": ""
+    }
+  },
+  "embedding": {
+    "provider": "ollama",
+    "model": "nomic-embed-text:latest",
+    "baseUrl": "http://localhost:11434",
+    "apiKey": ""
+  },
+  "storage": {
+    "memoryDir": "~/.bruce/memory",
+    "ragDir": "~/.bruce/rag"
+  },
+  "mcp": {
+    "servers": {}
+  },
+  "variables": {
+    "demoToken": "replace_me"
   }
 }
 ```
@@ -113,7 +142,7 @@ mvn clean package && java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 | RAG | `/search <query>` | 手动代码检索 | 观察 SQLite + Embedding 混合检索结果。 |
 | RAG | `/graph <name>` | 查看代码关系图谱 | 按类名或方法名查看关系。 |
 | Web | `/web on\|off\|status` | 开关或查看联网能力 | Web 默认开启。 |
-| Web | `/web search <query>` | 手动联网搜索 | 使用 `GLM_API_KEY` 等独立配置。 |
+| Web | `/web search <query>` | 手动联网搜索 | 使用 `~/.bruce/setting.json` 的 `webSearch` 配置。 |
 | Web | `/web fetch <url>` | 抓取网页正文 | 用于调试 WebFetch 提取结果。 |
 | MCP | `/mcp` | 查看 MCP server 状态 | 展示 server 是否就绪、工具数量和日志摘要。 |
 | MCP | `/mcp restart <name>` | 重启 MCP server | 适合配置更新或 server 异常后手动恢复。 |
@@ -184,64 +213,77 @@ $java-review $security-review 审查登录模块
 
 ## 联网搜索配置
 
-WebSearch 默认优先使用智谱搜索，单独读取 `GLM_API_KEY`：
+WebSearch 读取 `~/.bruce/setting.json` 的 `webSearch`。`provider` 支持 `zhipu` / `glm` / `bigmodel`、`serpapi`、`searxng` / `searx`；未显式配置时会按已填写的 key 或 url 自动选择，最后回退到智谱。
 
-```env
-GLM_API_KEY=your_glm_api_key_here
-GLM_SEARCH_ENGINE=search_std
-GLM_SEARCH_CONTENT_SIZE=medium
-```
-
-也可以切换搜索引擎：
-
-```env
-WEB_SEARCH_PROVIDER=serpapi
-SERPAPI_KEY=your_serpapi_key_here
-
-# 或者使用自部署 SearXNG
-WEB_SEARCH_PROVIDER=searxng
-SEARXNG_URL=http://localhost:8888
+```json
+{
+  "webSearch": {
+    "provider": "zhipu",
+    "zhipu": {
+      "apiKey": "your_zhipu_key",
+      "searchEngine": "search_std",
+      "contentSize": "medium",
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/web_search"
+    },
+    "serpapi": {
+      "apiKey": ""
+    },
+    "searxng": {
+      "url": ""
+    }
+  }
+}
 ```
 
 Agent 会自动使用 `web_search` 和 `web_fetch`。手动调试时可用 `/web search <query>` 和 `/web fetch <url>`。
 
+## Embedding 与存储配置
+
+RAG 默认使用本地 Ollama，也可以切换到 OpenAI-compatible / 智谱风格的 `/embeddings` 接口。长期记忆目录和 RAG 数据库目录也从 `setting.json` 读取：
+
+```json
+{
+  "embedding": {
+    "provider": "ollama",
+    "model": "nomic-embed-text:latest",
+    "baseUrl": "http://localhost:11434",
+    "apiKey": ""
+  },
+  "storage": {
+    "memoryDir": "~/.bruce/memory",
+    "ragDir": "~/.bruce/rag"
+  }
+}
+```
+
 ## MCP 配置
 
-Bruce Coding Agent 会加载两级 MCP 配置：
-
-```text
-~/.bruce/mcp.json      用户级配置
-.bruce/mcp.json        项目级配置，优先级更高
-```
-
-配置格式兼容常见 MCP `mcpServers` 写法。stdio 示例：
+Bruce Coding Agent 从 `~/.bruce/setting.json` 的 `mcp.servers` 加载 MCP server：
 
 ```json
 {
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${PROJECT_DIR}"],
-      "env": {
-        "NODE_OPTIONS": "--max-old-space-size=256"
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "${PROJECT_DIR}"],
+        "env": {
+          "NODE_OPTIONS": "--max-old-space-size=256"
+        }
+      },
+      "zread": {
+        "type": "http",
+        "url": "https://open.bigmodel.cn/api/mcp/zread/mcp",
+        "headers": {
+          "Authorization": "Bearer ${llm.providers.glm.apiKey}"
+        }
       }
     }
+  },
+  "variables": {
+    "customToken": "replace_me"
   }
 }
 ```
 
-Streamable HTTP 示例：
-
-```json
-{
-  "mcpServers": {
-    "zread": {
-      "type": "http",
-      "url": "https://open.bigmodel.cn/api/mcp/zread/mcp",
-      "headers": {
-        "Authorization": "Bearer ${GLM_API_KEY}"
-      }
-    }
-  }
-}
-```
+MCP 字符串字段支持变量替换：`${HOME}`、`${PROJECT_DIR}`、`${variables.customToken}`，以及 settings 点路径，例如 `${llm.providers.glm.apiKey}`。

@@ -1,6 +1,6 @@
-# 从 Bruce CLI 学 Lanterna TUI
+# 从 Bruce Coding Agent 学 Lanterna TUI
 
-这份文档围绕 Bruce CLI 当前已经用到的 Lanterna 特性整理，目标不是替代 Lanterna 官方手册，而是帮助你通过真实代码理解：如何把一个命令行程序做成 fullscreen TUI、如何固定底部输入框、如何处理输入事件、如何绘制候选浮层和 HITL 审批框，以及哪些地方容易踩坑。
+这份文档围绕 Bruce Coding Agent 当前已经用到的 Lanterna 特性整理，目标不是替代 Lanterna 官方手册，而是帮助你通过真实代码理解：如何把一个命令行程序做成 fullscreen TUI、如何固定底部输入框、如何处理输入事件、如何绘制候选浮层和 HITL 审批框，以及哪些地方容易踩坑。
 
 对应核心代码：
 
@@ -12,9 +12,9 @@
 - `src/main/java/com/brucecli/integrated/cli/BruceSyntaxHighlighter.java`
 - `src/test/java/com/brucecli/render/LanternaBruceRendererTest.java`
 
-## 1. Bruce CLI 的 TUI 分层
+## 1. Bruce Coding Agent 的 TUI 分层
 
-Bruce CLI 当前把 Lanterna 相关职责拆成三层：
+Bruce Coding Agent 当前把 Lanterna 相关职责拆成三层：
 
 | 层 | 主要类 | 职责 |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Bruce CLI 当前把 Lanterna 相关职责拆成三层：
 
 ## 2. 创建 Fullscreen Screen
 
-Bruce CLI 在 `IntegratedMain` 中通过 `DefaultTerminalFactory` 创建 `Screen`：
+Bruce Coding Agent 在 `IntegratedMain` 中通过 `DefaultTerminalFactory` 创建 `Screen`：
 
 ```java
 DefaultTerminalFactory terminalFactory = new DefaultTerminalFactory()
@@ -67,7 +67,7 @@ try {
 
 ## 4. 事件循环：不要无脑全量刷新
 
-Bruce CLI 的事件循环现在是 dirty/event driven：
+Bruce Coding Agent 的事件循环现在是 dirty/event driven：
 
 ```java
 boolean localDirty = true;
