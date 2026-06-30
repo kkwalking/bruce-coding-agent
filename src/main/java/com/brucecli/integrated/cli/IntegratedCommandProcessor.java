@@ -399,9 +399,7 @@ public class IntegratedCommandProcessor {
                 return;
             }
             ModelOption selected = root.runtime.switchModel(selector);
-            String savePath = root.runtime.modelSettingsPath();
-            root.handled("已切换到模型: " + selected.display()
-                + (savePath == null || savePath.isBlank() ? "" : "\n默认模型已保存到: " + savePath));
+            root.handled("已切换到模型: " + selected.display());
         }
     }
 
