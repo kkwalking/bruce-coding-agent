@@ -95,6 +95,9 @@ class SessionManagerTest {
 
         String raw = Files.readString(manager.currentFile());
         assertFalse(raw.contains("SECRET_IMAGE"));
+        assertFalse(raw.contains("\"text\":true"));
+        assertFalse(raw.contains("\"image\":false"));
+        assertTrue(raw.contains("\"text\":\"[历史图片内容已移除，仅保留文字占位]\""));
         assertTrue(raw.contains("历史图片内容已移除"));
         assertFalse(manager.buildMessages().get(0).hasImageContent());
     }

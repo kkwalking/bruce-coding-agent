@@ -26,7 +26,7 @@ class ImageReferenceParserTest {
         assertEquals(2, input.message().contentParts().size());
         assertEquals("帮我分析这张截图", input.message().contentParts().get(0).text());
         ContentPart imagePart = input.message().contentParts().get(1);
-        assertTrue(imagePart.isImage());
+        assertTrue(imagePart.isImagePart());
         assertTrue(imagePart.imageUrl().url().startsWith("data:image/png;base64,"));
         assertTrue(input.text().contains("[已附加图片: " + image.toAbsolutePath().normalize()));
         assertFalse(input.text().contains("base64"));

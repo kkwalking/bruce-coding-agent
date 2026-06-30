@@ -181,10 +181,10 @@ public abstract class OpenAiCompatibleChatClient implements ChatClient {
                 continue;
             }
             ObjectNode partNode = contentArray.addObject();
-            if (part.isText()) {
+            if (part.isTextPart()) {
                 partNode.put("type", "text");
                 partNode.put("text", part.text() == null ? "" : part.text());
-            } else if (part.isImage()) {
+            } else if (part.isImagePart()) {
                 partNode.put("type", "image_url");
                 partNode.putObject("image_url").put("url", toImageUrl(part));
             } else {

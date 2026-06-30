@@ -115,7 +115,7 @@ public record Message(
         }
         int count = 0;
         for (ContentPart part : contentParts) {
-            if (part != null && part.isImage()) {
+            if (part != null && part.isImagePart()) {
                 count++;
             }
         }
