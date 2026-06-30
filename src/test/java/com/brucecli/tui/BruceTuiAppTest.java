@@ -93,15 +93,18 @@ class BruceTuiAppTest {
             );
             try (app) {
                 type(app, "/model");
-                List<CompletionItem> initial = BruceCompletionEngine.complete("/model", "/model".length(), context.runtime());
+                assertTrue(app.completions().isEmpty());
 
-                app.handleKey(new KeyStroke(KeyType.Enter), initial);
+                app.handleKey(new KeyStroke(KeyType.ArrowDown), app.completions());
+                assertEquals(0, app.selectedCompletion());
+
+                app.handleKey(new KeyStroke(KeyType.Enter), app.completions());
                 assertEquals("/model ", app.inputText());
-                List<CompletionItem> opened = BruceCompletionEngine.complete("/model ", "/model ".length(), context.runtime());
+                List<CompletionItem> opened = app.completions();
                 assertEquals(2, opened.size());
                 app.handleKey(new KeyStroke(KeyType.ArrowDown), opened);
                 assertEquals(1, app.selectedCompletion());
-                app.handleKey(new KeyStroke(KeyType.Enter), opened);
+                app.handleKey(new KeyStroke(KeyType.Enter), app.completions());
                 waitForModel(context, "glm", "glm-5.1");
 
                 assertTrue(submittedInputs.contains("/model glm/glm-5.1"));

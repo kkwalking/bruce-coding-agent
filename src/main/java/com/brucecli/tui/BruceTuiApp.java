@@ -47,6 +47,7 @@ public class BruceTuiApp implements AutoCloseable {
     private int scrollOffset;
     private volatile boolean busy;
     private volatile boolean exitRequested;
+    private boolean modelSelectorOpen;
     private Runnable eventSubscription = () -> {
     };
 
@@ -154,6 +155,7 @@ public class BruceTuiApp implements AutoCloseable {
             input.insert(cursor, character.charValue());
             cursor++;
             selectedCompletion = 0;
+            updateModelSelectorStateAfterEdit();
             return;
         }
 
@@ -186,7 +188,10 @@ public class BruceTuiApp implements AutoCloseable {
             case PageUp -> scrollBy(SCROLL_LINES);
             case PageDown -> scrollBy(-SCROLL_LINES);
             case Tab -> applyCompletion(completions);
-            case Escape -> selectedCompletion = 0;
+            case Escape -> {
+                selectedCompletion = 0;
+                modelSelectorOpen = false;
+            }
             case EOF -> exitRequested = true;
             default -> {
             }
@@ -300,7 +305,10 @@ public class BruceTuiApp implements AutoCloseable {
         return toolCall.function().name();
     }
 
-    private List<CompletionItem> completions() {
+    List<CompletionItem> completions() {
+        if (!modelSelectorOpen && isExactModelCommand(input.toString())) {
+            return List.of();
+        }
         List<CompletionItem> result = BruceCompletionEngine.complete(input.toString(), cursor, runtime);
         if (selectedCompletion >= result.size()) {
             selectedCompletion = Math.max(0, result.size() - 1);
@@ -318,25 +326,34 @@ public class BruceTuiApp implements AutoCloseable {
         input.append(completed);
         cursor = input.length();
         selectedCompletion = 0;
+        updateModelSelectorStateAfterEdit();
     }
 
     private boolean handleModelSelectorEnter(List<CompletionItem> completions) {
         String value = input.toString();
+        if (isExactModelCommand(value) && !modelSelectorOpen) {
+            openModelSelector();
+            return true;
+        }
         List<CompletionItem> modelCompletions = completions == null
             ? List.of()
             : completions.stream().filter(item -> "Model".equals(item.group())).toList();
-        if (value.equalsIgnoreCase("/model") && !modelCompletions.isEmpty()) {
-            replaceInput("/model ");
-            selectedCompletion = currentModelCompletionIndex(modelCompletions);
-            return true;
-        }
-        if (startsWithModelCommand(value) && !modelCompletions.isEmpty()) {
+        if ((modelSelectorOpen || startsWithModelCommand(value)) && !modelCompletions.isEmpty()) {
             CompletionItem item = modelCompletions.get(Math.max(0, Math.min(selectedCompletion, modelCompletions.size() - 1)));
             replaceInput("/model " + item.value());
             submitInput();
             return true;
         }
         return false;
+    }
+
+    private void openModelSelector() {
+        replaceInput("/model ");
+        modelSelectorOpen = true;
+        List<CompletionItem> modelCompletions = BruceCompletionEngine.complete(input.toString(), cursor, runtime).stream()
+            .filter(item -> "Model".equals(item.group()))
+            .toList();
+        selectedCompletion = currentModelCompletionIndex(modelCompletions);
     }
 
     private static int currentModelCompletionIndex(List<CompletionItem> modelCompletions) {
@@ -348,16 +365,28 @@ public class BruceTuiApp implements AutoCloseable {
         return 0;
     }
 
+    private static boolean isExactModelCommand(String value) {
+        return value != null && value.trim().equalsIgnoreCase("/model");
+    }
+
     private static boolean startsWithModelCommand(String value) {
         return value != null
             && value.length() >= "/model ".length()
             && value.regionMatches(true, 0, "/model ", 0, "/model ".length());
     }
 
+    private void updateModelSelectorStateAfterEdit() {
+        String value = input.toString();
+        if (!isExactModelCommand(value) && !startsWithModelCommand(value)) {
+            modelSelectorOpen = false;
+        }
+    }
+
     private void clearInput() {
         input.setLength(0);
         cursor = 0;
         selectedCompletion = 0;
+        modelSelectorOpen = false;
         historyIndex = history.size();
     }
 
@@ -368,6 +397,7 @@ public class BruceTuiApp implements AutoCloseable {
         input.deleteCharAt(cursor - 1);
         cursor--;
         selectedCompletion = 0;
+        updateModelSelectorStateAfterEdit();
     }
 
     private void deleteAtCursor() {
@@ -376,6 +406,7 @@ public class BruceTuiApp implements AutoCloseable {
         }
         input.deleteCharAt(cursor);
         selectedCompletion = 0;
+        updateModelSelectorStateAfterEdit();
     }
 
     private void previousHistory() {
@@ -399,6 +430,7 @@ public class BruceTuiApp implements AutoCloseable {
         input.append(value);
         cursor = input.length();
         selectedCompletion = 0;
+        modelSelectorOpen = false;
     }
 
     private void addHistory(String value) {
