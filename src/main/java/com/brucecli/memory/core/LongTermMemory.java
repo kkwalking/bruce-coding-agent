@@ -23,12 +23,12 @@ import java.util.Map;
  * 长期记忆。
  *
  * <p>长期记忆用于跨会话保存关键事实和用户偏好。
- * 文章评论里提到默认路径是 ~/.brucecli/memory/long_term_memory.json，
- * 同时支持 JVM 参数 -Dbrucecli.memory.dir=/path 和环境变量 BRUCECLI_MEMORY_DIR。</p>
+ * 默认路径是 ~/.bruce/memory/long_term_memory.json，
+ * 同时支持 JVM 参数 -Dbruce.memory.dir=/path 和环境变量 BRUCE_MEMORY_DIR。</p>
  */
 public class LongTermMemory {
-    public static final String JVM_MEMORY_DIR = "brucecli.memory.dir";
-    public static final String ENV_MEMORY_DIR = "BRUCECLI_MEMORY_DIR";
+    public static final String JVM_MEMORY_DIR = "bruce.memory.dir";
+    public static final String ENV_MEMORY_DIR = "BRUCE_MEMORY_DIR";
     private static final String FILE_NAME = "long_term_memory.json";
 
     private final Path memoryFile;
@@ -73,7 +73,7 @@ public class LongTermMemory {
             return Path.of(envValue).toAbsolutePath().normalize();
         }
 
-        return Path.of(System.getProperty("user.home"), ".brucecli", "memory")
+        return Path.of(System.getProperty("user.home"), ".bruce", "memory")
             .toAbsolutePath()
             .normalize();
     }

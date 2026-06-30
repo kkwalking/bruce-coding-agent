@@ -64,7 +64,7 @@ public final class IntegratedCliTestSupport {
     }
 
     public static Path writeSkill(Path tempDir, String name, String description, String instructions) throws Exception {
-        Path directory = tempDir.resolve(".brucecli/skills").resolve(name);
+        Path directory = tempDir.resolve(".bruce/skills").resolve(name);
         Files.createDirectories(directory);
         Files.writeString(directory.resolve("SKILL.md"), """
             ---
@@ -78,7 +78,7 @@ public final class IntegratedCliTestSupport {
     }
 
     public static void writeDisabledMcpServer(Path tempDir, String name) throws Exception {
-        Path config = tempDir.resolve(".brucecli/mcp.json");
+        Path config = tempDir.resolve(".bruce/mcp.json");
         Files.createDirectories(config.getParent());
         Files.writeString(config, """
             {

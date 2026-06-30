@@ -144,7 +144,7 @@ public final class ImageReferenceParser {
     }
 
     private static ImageProcessor.ProcessedImage readClipboardPngWithAppleScript() throws IOException {
-        Path output = Files.createTempFile("bruce-cli-clipboard-", ".png");
+        Path output = Files.createTempFile("bruce-coding-agent-clipboard-", ".png");
         try {
             captureClipboardPng(output);
             return ImageProcessor.process(Files.readAllBytes(output), "image/png", "clipboard");

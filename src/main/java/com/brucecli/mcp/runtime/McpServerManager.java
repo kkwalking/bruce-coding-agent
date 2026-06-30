@@ -211,8 +211,8 @@ public class McpServerManager implements AutoCloseable {
             return """
                 MCP server：未配置。
                 配置文件位置：
-                - ~/.brucecli/mcp.json
-                - .brucecli/mcp.json
+                - ~/.bruce/mcp.json
+                - .bruce/mcp.json
                 """.trim();
         }
         StringBuilder builder = new StringBuilder("MCP server 状态:\n");

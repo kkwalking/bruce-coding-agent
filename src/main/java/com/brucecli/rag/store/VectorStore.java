@@ -29,8 +29,8 @@ import java.util.Map;
  * 几千个 chunk 全量读到内存算余弦相似度已经足够轻量。</p>
  */
 public class VectorStore implements AutoCloseable {
-    public static final String JVM_RAG_DIR = "brucecli.rag.dir";
-    public static final String ENV_RAG_DIR = "BRUCECLI_RAG_DIR";
+    public static final String JVM_RAG_DIR = "bruce.rag.dir";
+    public static final String ENV_RAG_DIR = "BRUCE_RAG_DIR";
 
     private final Path dbFile;
     private final Connection connection;
@@ -55,7 +55,7 @@ public class VectorStore implements AutoCloseable {
         if (envValue != null && !envValue.isBlank()) {
             return Path.of(envValue).toAbsolutePath().normalize().resolve("codebase.db");
         }
-        return Path.of(System.getProperty("user.home"), ".brucecli", "rag", "codebase.db")
+        return Path.of(System.getProperty("user.home"), ".bruce", "rag", "codebase.db")
             .toAbsolutePath()
             .normalize();
     }

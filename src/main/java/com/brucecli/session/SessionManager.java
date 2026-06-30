@@ -15,7 +15,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -162,15 +161,11 @@ public class SessionManager {
 
     public synchronized List<SessionSummary> listSessions(AgentMode fallbackMode) throws IOException {
         List<SessionSummary> summaries = new ArrayList<>();
-        for (Path directory : sessionDirectories(homeDir, workspaceRoot)) {
-            if (!Files.isDirectory(directory)) {
-                continue;
-            }
-            try (var stream = Files.list(directory)) {
-                List<Path> files = stream
+        if (Files.isDirectory(sessionDirectory)) {
+            try (var stream = Files.list(sessionDirectory)) {
+                for (Path file : stream
                     .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
-                    .toList();
-                for (Path file : files) {
+                    .toList()) {
                     summaries.add(readSummary(file, fallbackMode));
                 }
             }
@@ -259,15 +254,13 @@ public class SessionManager {
 
     private Optional<Path> latestSessionFile() throws IOException {
         List<Path> files = new ArrayList<>();
-        for (Path directory : sessionDirectories(homeDir, workspaceRoot)) {
-            if (!Files.isDirectory(directory)) {
-                continue;
-            }
-            try (var stream = Files.list(directory)) {
-                files.addAll(stream
-                    .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
-                    .toList());
-            }
+        if (!Files.isDirectory(sessionDirectory)) {
+            return Optional.empty();
+        }
+        try (var stream = Files.list(sessionDirectory)) {
+            files.addAll(stream
+                .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
+                .toList());
         }
         return files.stream().max(Comparator.comparing(this::lastModified));
     }
@@ -487,26 +480,9 @@ public class SessionManager {
     }
 
     private static Path sessionDirectory(Path homeDir, Path workspaceRoot) {
-        return homeDir.resolve(".brucecli")
+        return homeDir.resolve(".bruce")
             .resolve("sessions")
             .resolve(formatWorkspaceDirectory(workspaceRoot))
-            .toAbsolutePath()
-            .normalize();
-    }
-
-    private static List<Path> sessionDirectories(Path homeDir, Path workspaceRoot) {
-        Path current = sessionDirectory(homeDir, workspaceRoot);
-        Path legacy = legacySessionDirectory(homeDir, workspaceRoot);
-        if (current.equals(legacy)) {
-            return List.of(current);
-        }
-        return List.of(current, legacy);
-    }
-
-    private static Path legacySessionDirectory(Path homeDir, Path workspaceRoot) {
-        return homeDir.resolve(".brucecli")
-            .resolve("sessions")
-            .resolve(legacyEncodeWorkspace(workspaceRoot))
             .toAbsolutePath()
             .normalize();
     }
@@ -514,12 +490,6 @@ public class SessionManager {
     private static String formatWorkspaceDirectory(Path workspaceRoot) {
         String cwd = workspaceRoot.toAbsolutePath().normalize().toString();
         return "--" + cwd.replaceFirst("^[/\\\\]", "").replaceAll("[/\\\\:]", "-") + "--";
-    }
-
-    private static String legacyEncodeWorkspace(Path workspaceRoot) {
-        return Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(workspaceRoot.toAbsolutePath().normalize().toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static String newSessionId() {

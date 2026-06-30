@@ -128,7 +128,7 @@ class LanternaBruceRendererTest {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
 
             renderer.updateIndexProgress(new IndexProgress(
-                "/Users/zhouzekun/code/bruce-cli",
+                "/Users/zhouzekun/code/bruce-coding-agent",
                 190,
                 207,
                 1306,
@@ -202,7 +202,7 @@ class LanternaBruceRendererTest {
 
     private static IndexProgress indexProgress(int processedFiles) {
         return new IndexProgress(
-            "/Users/zhouzekun/code/bruce-cli",
+            "/Users/zhouzekun/code/bruce-coding-agent",
             processedFiles,
             207,
             1306,

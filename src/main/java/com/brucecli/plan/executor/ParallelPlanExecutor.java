@@ -75,7 +75,7 @@ public class ParallelPlanExecutor implements ExecutionPlanExecutor {
         int parallelism = config.parallelismFor(executableTasks.size());
         ExecutorService executor = Executors.newFixedThreadPool(
             parallelism,
-            new DaemonThreadFactory("bruce-cli-plan")
+            new DaemonThreadFactory("bruce-coding-agent-plan")
         );
         try {
             List<Callable<TaskExecutionResult>> callables = new ArrayList<>();

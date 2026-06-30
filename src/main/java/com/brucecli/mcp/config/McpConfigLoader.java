@@ -16,9 +16,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 读取 bruce-cli MCP 配置。
+ * 读取 bruce-coding-agent MCP 配置。
  *
- * <p>加载顺序：用户级 ~/.brucecli/mcp.json，再读项目级 .brucecli/mcp.json；
+ * <p>加载顺序：用户级 ~/.bruce/mcp.json，再读项目级 .bruce/mcp.json；
  * 同名 server 由项目级覆盖。</p>
  */
 public class McpConfigLoader {
@@ -54,8 +54,8 @@ public class McpConfigLoader {
 
     public List<Path> candidateFiles() {
         return List.of(
-            Path.of(System.getProperty("user.home"), ".brucecli", "mcp.json"),
-            workspaceRoot.resolve(".brucecli/mcp.json")
+            Path.of(System.getProperty("user.home"), ".bruce", "mcp.json"),
+            workspaceRoot.resolve(".bruce/mcp.json")
         );
     }
 

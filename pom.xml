@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.brucecli</groupId>
-    <artifactId>bruce-cli</artifactId>
+    <artifactId>bruce-coding-agent</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>bruce-cli</name>
-    <description>集成 ReAct、Plan DAG、Memory、Multi-Agent、RAG、HITL 与并行执行的单模块 Agent CLI</description>
+    <name>bruce-coding-agent</name>
+    <description>集成 ReAct、Plan DAG、Memory、Multi-Agent、RAG、HITL 与并行执行的 Bruce Coding Agent</description>
 
     <properties>
         <maven.compiler.release>17</maven.compiler.release>

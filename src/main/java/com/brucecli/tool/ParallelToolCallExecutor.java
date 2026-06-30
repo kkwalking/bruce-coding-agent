@@ -34,7 +34,7 @@ public final class ParallelToolCallExecutor implements ToolCallExecutor, AutoClo
         this.toolCallRunner = new ToolCallRunner(toolRegistry, config::truncate);
         this.executor = Executors.newFixedThreadPool(
             config.maxParallelism(),
-            new DaemonThreadFactory("bruce-cli-tool")
+            new DaemonThreadFactory("bruce-coding-agent-tool")
         );
     }
 

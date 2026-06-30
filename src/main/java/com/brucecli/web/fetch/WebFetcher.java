@@ -48,7 +48,7 @@ public class WebFetcher {
 
         Request request = new Request.Builder()
             .url(url)
-            .header("User-Agent", "Mozilla/5.0 (compatible; bruce-cli-web-fetch/1.0)")
+            .header("User-Agent", "Mozilla/5.0 (compatible; bruce-coding-agent-web-fetch/1.0)")
             .get()
             .build();
 

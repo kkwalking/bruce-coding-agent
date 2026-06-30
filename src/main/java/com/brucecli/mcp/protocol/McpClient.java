@@ -76,7 +76,7 @@ public class McpClient implements AutoCloseable {
         ObjectNode capabilities = mapper.createObjectNode();
         capabilities.putObject("tools");
         ObjectNode clientInfo = mapper.createObjectNode();
-        clientInfo.put("name", "bruce-cli");
+        clientInfo.put("name", "bruce-coding-agent");
         clientInfo.put("version", "1.0.0");
 
         ObjectNode params = mapper.createObjectNode();

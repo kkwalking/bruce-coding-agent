@@ -26,7 +26,7 @@ class ZhipuSearchProviderTest {
                     {
                       "search_result": [
                         {
-                          "title": "Bruce CLI 发布",
+                          "title": "Bruce Coding Agent 发布",
                           "link": "https://example.com/bruce",
                           "content": "bruce 增加联网搜索能力",
                           "media": "Example",
@@ -54,7 +54,7 @@ class ZhipuSearchProviderTest {
             "https://open.bigmodel.cn/api/paas/v4/web_search"
         );
 
-        List<WebSearchResult> results = new ZhipuSearchProvider(config, client).search("Bruce CLI 最新消息", 3);
+        List<WebSearchResult> results = new ZhipuSearchProvider(config, client).search("Bruce Coding Agent 最新消息", 3);
 
         Request request = capturedRequest.get();
         assertEquals("https://open.bigmodel.cn/api/paas/v4/web_search", request.url().toString());
@@ -66,7 +66,7 @@ class ZhipuSearchProviderTest {
         assertTrue(requestBody.contains("\"content_size\":\"medium\""));
 
         assertEquals(1, results.size());
-        assertEquals("Bruce CLI 发布", results.get(0).title());
+        assertEquals("Bruce Coding Agent 发布", results.get(0).title());
         assertEquals("https://example.com/bruce", results.get(0).url());
         assertEquals("Example", results.get(0).source());
     }

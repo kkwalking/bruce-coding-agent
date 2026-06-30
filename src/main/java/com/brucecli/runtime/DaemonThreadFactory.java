@@ -11,7 +11,7 @@ public class DaemonThreadFactory implements ThreadFactory {
     private final AtomicInteger sequence = new AtomicInteger(1);
 
     public DaemonThreadFactory(String prefix) {
-        this.prefix = prefix == null || prefix.isBlank() ? "bruce-cli-worker" : prefix;
+        this.prefix = prefix == null || prefix.isBlank() ? "bruce-coding-agent-worker" : prefix;
     }
 
     @Override

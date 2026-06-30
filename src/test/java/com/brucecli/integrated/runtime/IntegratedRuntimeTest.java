@@ -359,7 +359,7 @@ class IntegratedRuntimeTest {
             String firstPrompt = renderMessages(chatClient.allMessages.get(0));
             assertFalse(firstPrompt.contains("Bruce Skill"));
             assertFalse(firstPrompt.contains("Bruce Skills"));
-            assertFalse(firstPrompt.contains("Bruce CLI 使用渐进式 Skill"));
+            assertFalse(firstPrompt.contains("Bruce Coding Agent 使用渐进式 Skill"));
             assertTrue(firstPrompt.contains("Skills provide task-specific instructions."));
             assertTrue(firstPrompt.contains("可用 Skills"));
             assertSkillToolDefinitionsAreBrandNeutral(chatClient.allTools.get(0));
@@ -703,7 +703,7 @@ class IntegratedRuntimeTest {
     }
 
     private Path writeSkill(String name, String description, String instructions) throws Exception {
-        Path directory = tempDir.resolve(".brucecli/skills").resolve(name);
+        Path directory = tempDir.resolve(".bruce/skills").resolve(name);
         Files.createDirectories(directory);
         Files.writeString(directory.resolve("SKILL.md"), """
             ---

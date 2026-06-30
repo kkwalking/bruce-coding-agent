@@ -19,8 +19,8 @@ public class SkillLoader {
     private final Path projectSkillsDirectory;
 
     public SkillLoader(Path userHome, Path workspaceRoot) {
-        this.userSkillsDirectory = userHome.toAbsolutePath().normalize().resolve(".brucecli/skills");
-        this.projectSkillsDirectory = workspaceRoot.toAbsolutePath().normalize().resolve(".brucecli/skills");
+        this.userSkillsDirectory = userHome.toAbsolutePath().normalize().resolve(".bruce/skills");
+        this.projectSkillsDirectory = workspaceRoot.toAbsolutePath().normalize().resolve(".bruce/skills");
     }
 
     public SkillLoadResult load() {

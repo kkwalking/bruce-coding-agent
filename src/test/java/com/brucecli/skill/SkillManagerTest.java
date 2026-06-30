@@ -133,7 +133,7 @@ class SkillManagerTest {
     }
 
     private Path writeSkill(Path project, String name, String description, String instructions) throws Exception {
-        Path directory = project.resolve(".brucecli/skills").resolve(name);
+        Path directory = project.resolve(".bruce/skills").resolve(name);
         Files.createDirectories(directory);
         Files.writeString(directory.resolve("SKILL.md"), """
             ---

@@ -615,7 +615,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
         String model = status == null ? "auto" : status.model();
         String workspace = status == null ? "" : compactPath(status.workspace());
         return List.of(
-            "┌─ Bruce CLI ─────────────────────────────────────────────────────────┐",
+            "┌─ Bruce Coding Agent ─────────────────────────────────────────────────────────┐",
             "│  Welcome back        │ Tips for getting started                    │",
             "│  bruce               │ Run /help to see bruce commands             │",
             "│  " + padRight(model, 18) + "│ What's new                                  │",

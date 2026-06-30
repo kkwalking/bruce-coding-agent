@@ -9,8 +9,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +28,7 @@ class SessionManagerTest {
         SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         assertTrue(Files.exists(manager.currentFile()));
+        assertEquals(".bruce", manager.currentFile().getParent().getParent().getParent().getFileName().toString());
         assertEquals(formatWorkspaceDirectory(workspace), manager.currentFile().getParent().getFileName().toString());
         assertTrue(Files.readString(manager.currentFile()).startsWith("{\"type\":\"session\""));
 
@@ -173,29 +172,6 @@ class SessionManagerTest {
         assertFalse(raw.contains("临时错误"));
     }
 
-    @Test
-    void legacyBase64WorkspaceDirectoryIsStillReadableByExplicitResume() throws Exception {
-        Path home = tempDir.resolve("home");
-        Path workspace = tempDir.resolve("workspace");
-        Path legacyDirectory = home.resolve(".brucecli")
-            .resolve("sessions")
-            .resolve(legacyWorkspaceDirectory(workspace));
-        Files.createDirectories(legacyDirectory);
-        Files.writeString(legacyDirectory.resolve("legacy.jsonl"), """
-            {"type":"session","version":1,"id":"legacy","createdAt":"2026-06-27T00:00:00Z","cwd":"%s","name":null}
-            {"type":"message","id":"e_legacy","timestamp":"2026-06-27T00:00:01Z","message":{"role":"user","content":"旧会话","reasoningContent":""}}
-            """.formatted(workspace.toAbsolutePath().normalize()));
-
-        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
-        manager.resume("legacy");
-
-        assertEquals("legacy", manager.currentSessionId());
-        assertEquals(List.of("旧会话"), manager.buildMessages().stream().map(Message::content).toList());
-
-        manager.createNew(AgentMode.REACT);
-        assertEquals(formatWorkspaceDirectory(workspace), manager.currentFile().getParent().getFileName().toString());
-    }
-
     private static String formatWorkspaceDirectory(Path workspace) {
         String cwd = workspace.toAbsolutePath().normalize().toString();
         return "--" + cwd.replaceFirst("^[/\\\\]", "").replaceAll("[/\\\\:]", "-") + "--";
@@ -205,11 +181,5 @@ class SessionManagerTest {
         SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
         manager.resume(sessionId);
         return manager;
-    }
-
-    private static String legacyWorkspaceDirectory(Path workspace) {
-        return Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(workspace.toAbsolutePath().normalize().toString().getBytes(StandardCharsets.UTF_8));
     }
 }

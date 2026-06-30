@@ -17,10 +17,10 @@ class McpConfigLoaderTest {
         String originalHome = System.getProperty("user.home");
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("project");
-        Files.createDirectories(home.resolve(".brucecli"));
-        Files.createDirectories(workspace.resolve(".brucecli"));
+        Files.createDirectories(home.resolve(".bruce"));
+        Files.createDirectories(workspace.resolve(".bruce"));
         Files.writeString(workspace.resolve(".env"), "GLM_API_KEY=glm-from-env\n");
-        Files.writeString(home.resolve(".brucecli/mcp.json"), """
+        Files.writeString(home.resolve(".bruce/mcp.json"), """
             {
               "mcpServers": {
                 "filesystem": {
@@ -34,7 +34,7 @@ class McpConfigLoaderTest {
               }
             }
             """);
-        Files.writeString(workspace.resolve(".brucecli/mcp.json"), """
+        Files.writeString(workspace.resolve(".bruce/mcp.json"), """
             {
               "mcpServers": {
                 "filesystem": {
@@ -76,10 +76,10 @@ class McpConfigLoaderTest {
         Path home = tempDir.resolve("home-parent-env");
         Path parent = tempDir.resolve("parent");
         Path workspace = parent.resolve("project");
-        Files.createDirectories(home.resolve(".brucecli"));
-        Files.createDirectories(workspace.resolve(".brucecli"));
+        Files.createDirectories(home.resolve(".bruce"));
+        Files.createDirectories(workspace.resolve(".bruce"));
         Files.writeString(parent.resolve(".env"), "GLM_API_KEY=glm-from-parent\n");
-        Files.writeString(workspace.resolve(".brucecli/mcp.json"), """
+        Files.writeString(workspace.resolve(".bruce/mcp.json"), """
             {
               "mcpServers": {
                 "zread": {
@@ -106,9 +106,9 @@ class McpConfigLoaderTest {
         String originalHome = System.getProperty("user.home");
         Path home = tempDir.resolve("home-system-env");
         Path workspace = tempDir.resolve("project-system-env");
-        Files.createDirectories(home.resolve(".brucecli"));
-        Files.createDirectories(workspace.resolve(".brucecli"));
-        Files.writeString(workspace.resolve(".brucecli/mcp.json"), """
+        Files.createDirectories(home.resolve(".bruce"));
+        Files.createDirectories(workspace.resolve(".bruce"));
+        Files.writeString(workspace.resolve(".bruce/mcp.json"), """
             {
               "mcpServers": {
                 "zread": {

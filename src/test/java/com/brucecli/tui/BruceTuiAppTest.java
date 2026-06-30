@@ -26,7 +26,7 @@ class BruceTuiAppTest {
     @Test
     void storesInputHistoryUnderBruceCliDirectory() {
         assertEquals(
-            tempDir.resolve(".brucecli/history").toAbsolutePath().normalize(),
+            tempDir.resolve(".bruce/history").toAbsolutePath().normalize(),
             BruceTuiApp.resolveHistoryFile(tempDir)
         );
     }

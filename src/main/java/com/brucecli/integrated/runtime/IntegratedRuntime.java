@@ -762,7 +762,7 @@ public class IntegratedRuntime implements AutoCloseable {
             MAX_REVIEW_RETRIES,
             additionalInstructions,
             concurrencyConfig.batchTimeout(),
-            new DaemonThreadFactory("bruce-cli-worker"),
+            new DaemonThreadFactory("bruce-coding-agent-worker"),
             () -> joinContext(skillManager.catalogPrompt(), skillManager.activeInstructions())
         );
     }

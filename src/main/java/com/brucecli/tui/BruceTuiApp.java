@@ -480,7 +480,7 @@ public class BruceTuiApp implements AutoCloseable {
 
     static Path resolveHistoryFile(Path homeDir) {
         Path base = homeDir == null ? Path.of(System.getProperty("user.home")) : homeDir;
-        return base.resolve(".brucecli").resolve("history").toAbsolutePath().normalize();
+        return base.resolve(".bruce").resolve("history").toAbsolutePath().normalize();
     }
 
     int scrollOffset() {

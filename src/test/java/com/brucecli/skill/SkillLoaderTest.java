@@ -18,10 +18,10 @@ class SkillLoaderTest {
     void loadsUserAndProjectSkillsWithProjectOverrideAndStableOrder() throws Exception {
         Path home = tempDir.resolve("home");
         Path project = tempDir.resolve("project");
-        writeSkill(home.resolve(".brucecli/skills/z-user"), "z-user", "用户 Skill", "用户指令");
-        writeSkill(home.resolve(".brucecli/skills/shared"), "shared", "用户版本", "用户版本指令");
-        writeSkill(project.resolve(".brucecli/skills/a-project"), "a-project", "项目 Skill", "项目指令");
-        writeSkill(project.resolve(".brucecli/skills/shared"), "shared", "项目版本", "项目版本指令");
+        writeSkill(home.resolve(".bruce/skills/z-user"), "z-user", "用户 Skill", "用户指令");
+        writeSkill(home.resolve(".bruce/skills/shared"), "shared", "用户版本", "用户版本指令");
+        writeSkill(project.resolve(".bruce/skills/a-project"), "a-project", "项目 Skill", "项目指令");
+        writeSkill(project.resolve(".bruce/skills/shared"), "shared", "项目版本", "项目版本指令");
 
         SkillLoadResult result = new SkillLoader(home, project).load();
 
@@ -43,8 +43,8 @@ class SkillLoaderTest {
     void reportsInvalidSkillsWithoutBlockingValidOnes() throws Exception {
         Path home = tempDir.resolve("home-invalid");
         Path project = tempDir.resolve("project-invalid");
-        writeSkill(project.resolve(".brucecli/skills/good"), "good", "有效", "有效指令");
-        Path invalid = project.resolve(".brucecli/skills/bad/SKILL.md");
+        writeSkill(project.resolve(".bruce/skills/good"), "good", "有效", "有效指令");
+        Path invalid = project.resolve(".bruce/skills/bad/SKILL.md");
         Files.createDirectories(invalid.getParent());
         Files.writeString(invalid, """
             ---

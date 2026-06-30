@@ -22,7 +22,7 @@ public class BruceSettingsLoader {
     }
 
     public static Path defaultSettingsFile() {
-        return Path.of(System.getProperty("user.home"), ".brucecli", "setting.json")
+        return Path.of(System.getProperty("user.home"), ".bruce", "setting.json")
             .toAbsolutePath()
             .normalize();
     }
