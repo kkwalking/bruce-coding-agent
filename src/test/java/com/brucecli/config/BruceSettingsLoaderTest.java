@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BruceSettingsLoaderTest {
@@ -22,7 +23,6 @@ class BruceSettingsLoaderTest {
         assertEquals("zhipu", settings.getWebSearch().getProvider());
         assertEquals("search_std", settings.getWebSearch().getZhipu().getSearchEngine());
         assertEquals("ollama", settings.getEmbedding().getProvider());
-        assertEquals("~/.bruce/memory", settings.getStorage().getMemoryDir());
         assertTrue(settings.getMcp().getServers().isEmpty());
     }
 
@@ -81,7 +81,8 @@ class BruceSettingsLoaderTest {
 	            }
 	            """);
 
-        BruceSettings settings = new BruceSettingsLoader(file).load();
+        BruceSettingsLoader loader = new BruceSettingsLoader(file);
+        BruceSettings settings = loader.load();
 
         assertEquals("glm", settings.getLlm().getDefaultProvider());
         assertEquals("glm-5.1", settings.getLlm().getDefaultModel());
@@ -98,11 +99,15 @@ class BruceSettingsLoaderTest {
         assertEquals("embedding-3", settings.getEmbedding().getModel());
         assertEquals("https://example.com/v4", settings.getEmbedding().getBaseUrl());
         assertEquals("embedding-key", settings.getEmbedding().getApiKey());
-        assertEquals("~/custom-memory", settings.getStorage().getMemoryDir());
-        assertEquals("/tmp/bruce-rag", settings.getStorage().getRagDir());
         assertEquals("token-value", settings.getVariables().get("demoToken"));
         assertEquals("npx", settings.getMcp().getServers().get("filesystem").getCommand());
         assertEquals(List.of("-y", "server"), settings.getMcp().getServers().get("filesystem").getArgs());
+
+        loader.save(settings);
+        String saved = Files.readString(file);
+        assertFalse(saved.contains("\"storage\""));
+        assertFalse(saved.contains("memoryDir"));
+        assertFalse(saved.contains("ragDir"));
     }
 
     @Test
@@ -117,6 +122,7 @@ class BruceSettingsLoaderTest {
         String saved = Files.readString(file);
         assertTrue(saved.contains("\"defaultProvider\" : \"deepseek\""));
         assertTrue(saved.contains("\"defaultModel\" : \"deepseek-v4-pro\""));
+        assertFalse(saved.contains("\"storage\""));
     }
 
     @Test

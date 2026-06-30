@@ -40,14 +40,14 @@ Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、
 ## 构建与运行
 
 ```bash
-# 编辑 ~/.bruce/setting.json，配置模型、搜索、Embedding、存储和 MCP
+# 编辑 ~/.bruce/setting.json，配置模型、搜索、Embedding 和 MCP
 
 mvn clean test
 mvn clean package
 java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 ```
 
-所有运行配置统一读取自 `~/.bruce/setting.json`：
+可配置项统一读取自 `~/.bruce/setting.json`：
 
 ```json
 {
@@ -89,10 +89,6 @@ java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
     "baseUrl": "http://localhost:11434",
     "apiKey": ""
   },
-  "storage": {
-    "memoryDir": "~/.bruce/memory",
-    "ragDir": "~/.bruce/rag"
-  },
   "mcp": {
     "servers": {}
   },
@@ -118,7 +114,7 @@ java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 mvn clean package && java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 ```
 
-程序以当前目录作为默认工具工作区。长期记忆和 RAG 索引默认保存在：
+程序以当前目录作为默认工具工作区。长期记忆和 RAG 索引固定保存在：
 
 ```text
 ~/.bruce/memory/long_term_memory.json
@@ -237,9 +233,9 @@ WebSearch 读取 `~/.bruce/setting.json` 的 `webSearch`。`provider` 支持 `zh
 
 Agent 会自动使用 `web_search` 和 `web_fetch`。手动调试时可用 `/web search <query>` 和 `/web fetch <url>`。
 
-## Embedding 与存储配置
+## Embedding 配置与固定存储目录
 
-RAG 默认使用本地 Ollama，也可以切换到 OpenAI-compatible / 智谱风格的 `/embeddings` 接口。长期记忆目录和 RAG 数据库目录也从 `setting.json` 读取：
+RAG 默认使用本地 Ollama，也可以切换到 OpenAI-compatible / 智谱风格的 `/embeddings` 接口：
 
 ```json
 {
@@ -248,13 +244,11 @@ RAG 默认使用本地 Ollama，也可以切换到 OpenAI-compatible / 智谱风
     "model": "nomic-embed-text:latest",
     "baseUrl": "http://localhost:11434",
     "apiKey": ""
-  },
-  "storage": {
-    "memoryDir": "~/.bruce/memory",
-    "ragDir": "~/.bruce/rag"
   }
 }
 ```
+
+长期记忆和 RAG 数据库目录不可通过 `setting.json` 切换，统一固定为 `~/.bruce/memory/long_term_memory.json` 和 `~/.bruce/rag/codebase.db`。
 
 ## MCP 配置
 
