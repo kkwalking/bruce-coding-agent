@@ -5,6 +5,7 @@ import com.brucecli.memory.core.MemoryStatus;
 import java.time.Duration;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 public record RuntimeStatus(
     AgentMode mode,
@@ -24,6 +25,13 @@ public record RuntimeStatus(
     int skillCount,
     List<String> toolNames
 ) {
+    private static final String MCP_TOOL_PREFIX = "mcp__";
+    private static final Set<String> HIDDEN_DISPLAY_TOOLS = Set.of(
+        "load_skill",
+        "read_skill_resource",
+        "save_long_term_memory"
+    );
+
     public String toDisplayString() {
         return """
             当前模式: %s
@@ -56,7 +64,19 @@ public record RuntimeStatus(
                     ? "开启 (max=" + maxParallelism + ", timeout=" + batchTimeout.toSeconds() + "s)"
                     : "关闭",
                 skillCount + " 个",
-                String.join(", ", toolNames)
+                String.join(", ", displayToolNames())
             );
+    }
+
+    private List<String> displayToolNames() {
+        return toolNames.stream()
+            .filter(RuntimeStatus::isDisplayTool)
+            .toList();
+    }
+
+    private static boolean isDisplayTool(String toolName) {
+        return toolName != null
+            && !toolName.startsWith(MCP_TOOL_PREFIX)
+            && !HIDDEN_DISPLAY_TOOLS.contains(toolName);
     }
 }
