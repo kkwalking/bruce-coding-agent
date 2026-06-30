@@ -35,7 +35,7 @@ Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、
 - Maven 3.9+
 - 显式配置 `~/.bruce/setting.json` 中的 `llm.providers`
 - 可选：在 `~/.bruce/setting.json` 中配置 `webSearch`、`embedding`、`mcp` 等能力
-- 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置。rag功能默认关闭，可通过/rag开启。
+- 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置。RAG 功能默认关闭，相关 slash 入口目前暂时屏蔽。
 
 ## 构建与运行
 
@@ -123,6 +123,8 @@ mvn clean package && java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 
 ## Slash 命令介绍
 
+RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
+
 | 分类 | 命令 | 作用 | 说明 |
 | --- | --- | --- | --- |
 | 模式 | `/react` | 切换到 ReAct 模式 | 适合边思考边调用工具的普通任务。 |
@@ -133,10 +135,6 @@ mvn clean package && java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 | Memory | `/memory status` | 查看 Memory 状态 | 展示短期记忆、长期记忆和压缩状态。 |
 | Memory | `/memory save <内容>` | 保存长期记忆 | 用于保存跨会话稳定事实或偏好。 |
 | Memory | `/memory search <查询>` | 检索长期记忆 | 手动查看与查询相关的长期记忆。 |
-| RAG | `/rag on\|off\|status` | 开关或查看代码 RAG | RAG 默认关闭。 |
-| RAG | `/index [path]` | 建立代码索引 | `path` 可选；传入后会把该路径设为当前工作目录。 |
-| RAG | `/search <query>` | 手动代码检索 | 观察 SQLite + Embedding 混合检索结果。 |
-| RAG | `/graph <name>` | 查看代码关系图谱 | 按类名或方法名查看关系。 |
 | Web | `/web on\|off\|status` | 开关或查看联网能力 | Web 默认开启。 |
 | Web | `/web search <query>` | 手动联网搜索 | 使用 `~/.bruce/setting.json` 的 `webSearch` 配置。 |
 | Web | `/web fetch <url>` | 抓取网页正文 | 用于调试 WebFetch 提取结果。 |

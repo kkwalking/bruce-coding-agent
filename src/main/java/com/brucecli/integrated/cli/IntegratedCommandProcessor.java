@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 public class IntegratedCommandProcessor {
+    private static final boolean RAG_SLASH_COMMANDS_ENABLED = false;
+
     private final IntegratedRuntime runtime;
     private final PrintStream out;
     private final IndexProgressListener indexProgressListener;
@@ -52,9 +54,7 @@ public class IntegratedCommandProcessor {
         }
 
         SlashRoot root = new SlashRoot(runtime, out, indexProgressListener);
-        CommandLine commandLine = new CommandLine(root)
-            .setCaseInsensitiveEnumValuesAllowed(true)
-            .setUnmatchedArgumentsAllowed(false);
+        CommandLine commandLine = createCommandLine(root);
         commandLine.setExecutionExceptionHandler((exception, parsed, parseResult) -> {
             root.fail("命令执行失败: " + exception.getMessage());
             return CommandLine.ExitCode.SOFTWARE;
@@ -74,6 +74,23 @@ public class IntegratedCommandProcessor {
 
     public String help() {
         return SlashRoot.helpText();
+    }
+
+    public static boolean ragSlashCommandsEnabled() {
+        return RAG_SLASH_COMMANDS_ENABLED;
+    }
+
+    private static CommandLine createCommandLine(SlashRoot root) {
+        CommandLine commandLine = new CommandLine(root)
+            .setCaseInsensitiveEnumValuesAllowed(true)
+            .setUnmatchedArgumentsAllowed(false);
+        if (ragSlashCommandsEnabled()) {
+            commandLine.addSubcommand("rag", new Rag());
+            commandLine.addSubcommand("index", new Index());
+            commandLine.addSubcommand("search", new Search());
+            commandLine.addSubcommand("graph", new Graph());
+        }
+        return commandLine;
     }
 
     private static String[] toPicocliArgs(String input) {
@@ -142,10 +159,6 @@ public class IntegratedCommandProcessor {
             Multi.class,
             Model.class,
             Parallel.class,
-            Rag.class,
-            Index.class,
-            Search.class,
-            Graph.class,
             Web.class,
             Mcp.class,
             Memory.class,
@@ -187,7 +200,7 @@ public class IntegratedCommandProcessor {
         }
 
         static String helpText() {
-            return """
+            StringBuilder help = new StringBuilder("""
                 模式:
                   /react                 切换到 ReAct 模式
                   /plan                  切换到 Plan-and-Execute 模式
@@ -198,12 +211,18 @@ public class IntegratedCommandProcessor {
                   /model <provider/model>
                                          切换模型，并保存为下次启动默认模型
 
+                """);
+            if (ragSlashCommandsEnabled()) {
+                help.append("""
                 RAG（默认关闭）:
                   /rag on|off|status
                   /index [path]          建立索引，并将 path 设为当前工作目录
                   /search <query>        手动观察代码混合检索结果
                   /graph <name>          查看类或方法关系图谱
 
+                """);
+            }
+            help.append("""
 	                Web（默认开启）:
 	                  /web on|off|status
 	                  /web search <query>    手动联网搜索，配置读取自 ~/.bruce/setting.json
@@ -247,7 +266,8 @@ public class IntegratedCommandProcessor {
                   /clear                 开启新 session，保留长期记忆和 RAG 索引
                   /help
                   /exit
-                """;
+                """);
+            return help.toString();
         }
     }
 

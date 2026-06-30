@@ -642,7 +642,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
             "│  bruce               │ Run /help to see bruce commands             │",
             "│  " + padRight(model, 18) + "│ What's new                                  │",
             "│  " + padRight(workspace, 18) + "│ /skill lists project skills and /mcp shows tools│",
-            "│                      │ /rag on enables code search after /index    │",
+            "│                      │ /web search queries configured providers    │",
             "└────────────────────────────────────────────────────────────────────┘"
         );
     }

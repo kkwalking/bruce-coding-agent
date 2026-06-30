@@ -60,16 +60,39 @@ class IntegratedCommandProcessorTest {
     @Test
     void featureSwitchCommandsValidateActionsAndKeepStatusOutput() throws Exception {
         try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir)) {
-            assertTrue(context.commands().handle("/rag on").output().contains("RAG 已开启"));
-            assertTrue(context.commands().handle("/rag status").output().contains("开启"));
             assertTrue(context.commands().handle("/web off").output().contains("Web 已关闭"));
             assertTrue(context.commands().handle("/web").output().contains("关闭"));
             assertTrue(context.commands().handle("/parallel off").output().contains("Parallel 已关闭"));
             assertTrue(context.commands().handle("/hitl off").output().contains("HITL 已关闭"));
 
-            String invalid = context.commands().handle("/rag maybe").output();
-            assertTrue(invalid.contains("rag 只支持"));
+            String invalid = context.commands().handle("/web maybe").output();
+            assertTrue(invalid.contains("web 只支持"));
             assertTrue(invalid.contains("/help"));
+        }
+    }
+
+    @Test
+    void ragSlashCommandsAreTemporarilyHiddenFromCommandSurface() throws Exception {
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir)) {
+            assertFalse(IntegratedCommandProcessor.ragSlashCommandsEnabled());
+
+            String help = context.commands().handle("/help").output();
+            assertFalse(help.contains("/rag"));
+            assertFalse(help.contains("/index"));
+            assertFalse(help.contains("/search <query>"));
+            assertFalse(help.contains("/graph"));
+
+            for (String command : List.of(
+                "/rag on",
+                "/index " + tempDir,
+                "/search LoginService",
+                "/graph LoginService"
+            )) {
+                CommandResult result = context.commands().handle(command);
+                assertTrue(result.handled());
+                assertTrue(result.output().contains("/help"));
+            }
+            assertFalse(context.runtime().ragEnabled());
         }
     }
 
@@ -182,7 +205,7 @@ class IntegratedCommandProcessorTest {
     }
 
     @Test
-    void indexCommandRoutesProgressToListenerAndReturnsOnlySummary() throws Exception {
+    void runtimeIndexRoutesProgressToListenerAndReturnsOnlySummary() throws Exception {
         Path project = tempDir.resolve("project");
         Path source = project.resolve("src/main/java/demo/LoginService.java");
         Files.createDirectories(source.getParent());
@@ -201,18 +224,17 @@ class IntegratedCommandProcessorTest {
             tempDir,
             new PrintStream(output, true, StandardCharsets.UTF_8)
         )) {
-            IntegratedCommandProcessor commands = new IntegratedCommandProcessor(
-                context.runtime(),
-                new PrintStream(output, true, StandardCharsets.UTF_8),
-                progressEvents::add
-            );
             context.runtime().setRagEnabled(true);
 
-            CommandResult result = commands.handle("/index " + project);
+            String result = context.runtime().index(
+                project,
+                new PrintStream(output, true, StandardCharsets.UTF_8),
+                progressEvents::add
+            ).toDisplayString();
 
-            assertTrue(result.output().startsWith("索引完成: files=1,"));
-            assertTrue(result.output().contains("project=" + project.toAbsolutePath().normalize()));
-            assertFalse(result.output().contains("[index]"));
+            assertTrue(result.startsWith("索引完成: files=1,"));
+            assertTrue(result.contains("project=" + project.toAbsolutePath().normalize()));
+            assertFalse(result.contains("[index]"));
             assertFalse(output.toString(StandardCharsets.UTF_8).contains("[index]"));
             assertTrue(progressEvents.stream().anyMatch(progress -> progress.processedFiles() == 1));
             assertTrue(progressEvents.stream().anyMatch(progress -> progress.phase().equals("done")));

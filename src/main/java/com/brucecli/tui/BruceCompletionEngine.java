@@ -1,5 +1,6 @@
 package com.brucecli.tui;
 
+import com.brucecli.integrated.cli.IntegratedCommandProcessor;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ModelOption;
 import com.brucecli.skill.SkillDefinition;
@@ -64,12 +65,13 @@ public final class BruceCompletionEngine {
         String prefix = input.endsWith(" ") ? "" : word;
 
         switch (command) {
-            case "rag", "hitl", "parallel", "concurrency" ->
-                addMatching(candidates, "状态", prefix, List.of(
-                    option("on", "开启"),
-                    option("off", "关闭"),
-                    option("status", "查看状态")
-                ));
+            case "rag" -> {
+                if (IntegratedCommandProcessor.ragSlashCommandsEnabled()) {
+                    completeSwitch(prefix, candidates);
+                }
+            }
+            case "hitl", "parallel", "concurrency" ->
+                completeSwitch(prefix, candidates);
             case "web" -> completeWeb(parts, prefix, input.endsWith(" "), candidates);
             case "mcp" -> completeMcp(parts, prefix, input.endsWith(" "), runtime, candidates);
             case "memory" -> completeMemory(parts, prefix, input.endsWith(" "), candidates);
@@ -80,6 +82,14 @@ public final class BruceCompletionEngine {
                 }
             }
         }
+    }
+
+    private static void completeSwitch(String prefix, List<CompletionItem> candidates) {
+        addMatching(candidates, "状态", prefix, List.of(
+            option("on", "开启"),
+            option("off", "关闭"),
+            option("status", "查看状态")
+        ));
     }
 
     private static void completeModel(String input, IntegratedRuntime runtime, List<CompletionItem> candidates) {

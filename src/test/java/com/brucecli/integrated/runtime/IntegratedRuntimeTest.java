@@ -296,17 +296,14 @@ class IntegratedRuntimeTest {
     }
 
     @Test
-    void ragSwitchControlsCommandsToolAndPrompt() throws Exception {
+    void ragSwitchControlsToolAndPrompt() throws Exception {
         try (TestContext context = context()) {
-            String disabled = context.commands.handle("/index " + tempDir).output();
-            assertTrue(disabled.contains("RAG 当前关闭"));
-
-            context.commands.handle("/rag on");
+            context.runtime.setRagEnabled(true);
             assertTrue(context.runtime.status().toolNames().contains("search_code"));
             context.runtime.run("代码在哪里实现？");
             assertTrue(context.chatClient.lastMessages.get(0).content().contains("search_code"));
 
-            context.commands.handle("/rag off");
+            context.runtime.setRagEnabled(false);
             assertFalse(context.runtime.status().toolNames().contains("search_code"));
             context.runtime.run("普通问题");
             assertFalse(context.chatClient.lastMessages.get(0).content().contains("你额外拥有 search_code"));
@@ -328,9 +325,9 @@ class IntegratedRuntimeTest {
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
             context.commands.handle("/parallel off");
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            context.commands.handle("/rag on");
+            context.runtime.setRagEnabled(true);
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            context.commands.handle("/rag off");
+            context.runtime.setRagEnabled(false);
             assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
             assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
         }
