@@ -16,6 +16,8 @@ import com.brucecli.tool.GuardedHitlToolRegistry;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ImageReferenceParser;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.ModelOption;
+import com.brucecli.llm.ModelSelectionService;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.memory.core.MemoryContext;
 import com.brucecli.memory.core.MemoryManager;
@@ -496,9 +498,42 @@ public class IntegratedRuntime implements AutoCloseable {
         return memoryManager.status();
     }
 
+    public List<ModelOption> modelOptions() {
+        ModelSelectionService service = modelSelectionService();
+        if (service != null) {
+            return service.modelOptions();
+        }
+        ModelOption current = currentModel();
+        return current.model().isBlank() ? List.of() : List.of(current);
+    }
+
+    public ModelOption currentModel() {
+        ModelSelectionService service = modelSelectionService();
+        if (service != null) {
+            return service.currentModel();
+        }
+        return new ModelOption(chatClient.getProviderName(), chatClient.getModelName());
+    }
+
+    public ModelOption switchModel(String selector) {
+        ModelSelectionService service = modelSelectionService();
+        if (service == null) {
+            throw new IllegalStateException("当前 ChatClient 不支持模型切换。");
+        }
+        return service.switchModel(selector);
+    }
+
+    public String modelSettingsPath() {
+        ModelSelectionService service = modelSelectionService();
+        return service == null ? "" : service.settingsPath();
+    }
+
     public RuntimeStatus status() {
+        ModelOption model = currentModel();
         return new RuntimeStatus(
             mode,
+            model.model().isBlank() ? "auto" : model.model(),
+            model.provider().isBlank() ? "unknown" : model.provider(),
             workspaceRoot,
             memoryManager.status(),
             ragEnabled,
@@ -836,6 +871,10 @@ public class IntegratedRuntime implements AutoCloseable {
             return "disabled";
         }
         return searchProvider().name();
+    }
+
+    private ModelSelectionService modelSelectionService() {
+        return chatClient instanceof ModelSelectionService service ? service : null;
     }
 
     private McpStartup createMcpManager(Path root) {

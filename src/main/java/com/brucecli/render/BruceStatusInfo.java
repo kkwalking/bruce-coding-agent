@@ -25,8 +25,8 @@ public record BruceStatusInfo(
     public static BruceStatusInfo from(IntegratedRuntime runtime, ChatClient chatClient, String phase) {
         RuntimeStatus status = runtime.status();
         return new BruceStatusInfo(
-            safe(chatClient.getModelName(), "auto"),
-            safe(chatClient.getProviderName(), "unknown"),
+            safe(status.model(), safe(chatClient.getModelName(), "auto")),
+            safe(status.provider(), safe(chatClient.getProviderName(), "unknown")),
             status.mode().name().toLowerCase(),
             safe(phase, "idle"),
             status.workspaceRoot(),

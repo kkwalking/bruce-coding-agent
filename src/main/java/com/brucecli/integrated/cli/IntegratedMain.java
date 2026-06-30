@@ -1,5 +1,7 @@
 package com.brucecli.integrated.cli;
 
+import com.brucecli.config.BruceSettings;
+import com.brucecli.config.BruceSettingsLoader;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatClientFactory;
@@ -41,8 +43,10 @@ public class IntegratedMain {
 
                 ChatClient chatClient;
                 try {
-                    chatClient = ChatClientFactory.create(env::get);
-                } catch (IllegalArgumentException exception) {
+                    BruceSettingsLoader settingsLoader = BruceSettingsLoader.defaults();
+                    BruceSettings settings = settingsLoader.load();
+                    chatClient = ChatClientFactory.create(settings, settingsLoader);
+                } catch (Exception exception) {
                     originalErr.println(exception.getMessage());
                     System.exit(1);
                     return;

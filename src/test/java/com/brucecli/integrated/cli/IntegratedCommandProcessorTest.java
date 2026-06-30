@@ -1,7 +1,10 @@
 package com.brucecli.integrated.cli;
 
+import com.brucecli.config.BruceSettings;
+import com.brucecli.config.BruceSettingsLoader;
 import com.brucecli.event.BruceEvents;
 import com.brucecli.integrated.runtime.AgentMode;
+import com.brucecli.llm.ChatClientFactory;
 import com.brucecli.rag.model.IndexProgress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -67,6 +70,68 @@ class IntegratedCommandProcessorTest {
             String invalid = context.commands().handle("/rag maybe").output();
             assertTrue(invalid.contains("rag 只支持"));
             assertTrue(invalid.contains("/help"));
+        }
+    }
+
+    @Test
+    void modelCommandListsAndSwitchesModels() throws Exception {
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir)) {
+            String list = context.commands().handle("/model").output();
+            assertTrue(list.contains("当前模型: test-model [test]"));
+            assertTrue(list.contains("glm-5.1 [glm]"));
+
+            String switched = context.commands().handle("/model glm/glm-5.1").output();
+            assertTrue(switched.contains("已切换到模型: glm-5.1 [glm]"));
+            assertEquals("glm", context.runtime().currentModel().provider());
+            assertEquals("glm-5.1", context.runtime().currentModel().model());
+
+            String unknown = context.commands().handle("/model missing-model").output();
+            assertTrue(unknown.contains("未知模型"));
+        }
+    }
+
+    @Test
+    void modelCommandPersistsDefaultModelForSwitchableClient() throws Exception {
+        Path file = tempDir.resolve("setting.json");
+        BruceSettings settings = new BruceSettings();
+        settings.getLlm().setDefaultProvider("deepseek");
+        settings.getLlm().setDefaultModel("deepseek-v4-flash");
+        settings.getLlm().getProviders().put("deepseek", provider("deepseek-key"));
+
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(
+            tempDir,
+            new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8),
+            ChatClientFactory.create(settings, new BruceSettingsLoader(file))
+        )) {
+            String output = context.commands().handle("/model deepseek/deepseek-v4-pro").output();
+
+            assertTrue(output.contains("已切换到模型: deepseek-v4-pro [deepseek]"));
+            String saved = Files.readString(file);
+            assertTrue(saved.contains("\"defaultProvider\" : \"deepseek\""));
+            assertTrue(saved.contains("\"defaultModel\" : \"deepseek-v4-pro\""));
+        }
+    }
+
+    @Test
+    void modelCommandRequiresProviderWhenModelNameIsAmbiguous() throws Exception {
+        BruceSettings settings = new BruceSettings();
+        settings.getLlm().setDefaultProvider("glm");
+        settings.getLlm().setDefaultModel("glm-5.1");
+        settings.getLlm().getProviders().put("glm", provider("glm-key"));
+        BruceSettings.ProviderSettings local = provider("local-key");
+        local.setBaseUrl("http://localhost:9000/v1");
+        local.setModels(List.of("glm-5.1"));
+        settings.getLlm().getProviders().put("openai_compatiable", local);
+
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(
+            tempDir,
+            new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8),
+            ChatClientFactory.create(settings, new BruceSettingsLoader(tempDir.resolve("setting.json")))
+        )) {
+            String output = context.commands().handle("/model glm-5.1").output();
+
+            assertTrue(output.contains("模型名重复"));
+            assertTrue(output.contains("provider/model"));
         }
     }
 
@@ -174,5 +239,11 @@ class IntegratedCommandProcessorTest {
             assertTrue(activities.stream().anyMatch(message -> message.contains("启动 MCP server")));
             assertFalse(output.toString(StandardCharsets.UTF_8).contains("启动 MCP server"));
         }
+    }
+
+    private static BruceSettings.ProviderSettings provider(String apiKey) {
+        BruceSettings.ProviderSettings provider = new BruceSettings.ProviderSettings();
+        provider.setApiKey(apiKey);
+        return provider;
     }
 }

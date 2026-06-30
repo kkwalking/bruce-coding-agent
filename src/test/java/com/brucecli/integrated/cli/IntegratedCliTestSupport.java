@@ -7,6 +7,8 @@ import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
 import com.brucecli.llm.Message;
+import com.brucecli.llm.ModelOption;
+import com.brucecli.llm.ModelSelectionService;
 import com.brucecli.llm.ToolDefinition;
 import com.brucecli.memory.core.ConversationMemory;
 import com.brucecli.memory.core.LongTermMemory;
@@ -33,7 +35,10 @@ public final class IntegratedCliTestSupport {
     }
 
     public static TestContext context(Path tempDir, PrintStream out) throws Exception {
-        CapturingChatClient chatClient = new CapturingChatClient();
+        return context(tempDir, out, new CapturingChatClient());
+    }
+
+    public static TestContext context(Path tempDir, PrintStream out, ChatClient chatClient) throws Exception {
         MemoryManager memoryManager = new MemoryManager(
             new ConversationMemory(1_000),
             new LongTermMemory(tempDir.resolve("memory")),
@@ -99,10 +104,51 @@ public final class IntegratedCliTestSupport {
         }
     }
 
-    static class CapturingChatClient implements ChatClient {
+    static class CapturingChatClient implements ChatClient, ModelSelectionService {
+        private ModelOption currentModel = new ModelOption("test", "test-model");
+        private final List<ModelOption> models = List.of(
+            new ModelOption("test", "test-model"),
+            new ModelOption("glm", "glm-5.1")
+        );
+
         @Override
         public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) {
             return new ChatResponse("ok", List.of());
+        }
+
+        @Override
+        public String getProviderName() {
+            return currentModel.provider();
+        }
+
+        @Override
+        public String getModelName() {
+            return currentModel.model();
+        }
+
+        @Override
+        public List<ModelOption> modelOptions() {
+            return models;
+        }
+
+        @Override
+        public ModelOption currentModel() {
+            return currentModel;
+        }
+
+        @Override
+        public ModelOption switchModel(String selector) {
+            currentModel = models.stream()
+                .filter(option -> option.selector().equalsIgnoreCase(selector)
+                    || option.model().equalsIgnoreCase(selector))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("未知模型: " + selector));
+            return currentModel;
+        }
+
+        @Override
+        public String settingsPath() {
+            return "";
         }
     }
 

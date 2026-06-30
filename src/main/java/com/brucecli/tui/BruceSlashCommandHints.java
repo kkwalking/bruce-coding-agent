@@ -7,6 +7,7 @@ final class BruceSlashCommandHints {
         hint("/react", "切换到 ReAct 模式"),
         hint("/plan", "切换到 Plan-and-Execute 模式"),
         hint("/multi", "切换到 Multi-Agent 模式"),
+        hint("/model", "选择模型"),
         hint("/rag ", "RAG 开关和状态"),
         hint("/index ", "建立代码索引"),
         hint("/search ", "搜索代码索引"),

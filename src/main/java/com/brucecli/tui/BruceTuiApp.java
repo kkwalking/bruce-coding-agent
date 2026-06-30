@@ -158,7 +158,11 @@ public class BruceTuiApp implements AutoCloseable {
         }
 
         switch (type) {
-            case Enter -> submitInput();
+            case Enter -> {
+                if (!handleModelSelectorEnter(completions)) {
+                    submitInput();
+                }
+            }
             case Backspace -> backspace();
             case Delete -> deleteAtCursor();
             case ArrowLeft -> cursor = Math.max(0, cursor - 1);
@@ -316,6 +320,40 @@ public class BruceTuiApp implements AutoCloseable {
         selectedCompletion = 0;
     }
 
+    private boolean handleModelSelectorEnter(List<CompletionItem> completions) {
+        String value = input.toString();
+        List<CompletionItem> modelCompletions = completions == null
+            ? List.of()
+            : completions.stream().filter(item -> "Model".equals(item.group())).toList();
+        if (value.equalsIgnoreCase("/model") && !modelCompletions.isEmpty()) {
+            replaceInput("/model ");
+            selectedCompletion = currentModelCompletionIndex(modelCompletions);
+            return true;
+        }
+        if (startsWithModelCommand(value) && !modelCompletions.isEmpty()) {
+            CompletionItem item = modelCompletions.get(Math.max(0, Math.min(selectedCompletion, modelCompletions.size() - 1)));
+            replaceInput("/model " + item.value());
+            submitInput();
+            return true;
+        }
+        return false;
+    }
+
+    private static int currentModelCompletionIndex(List<CompletionItem> modelCompletions) {
+        for (int i = 0; i < modelCompletions.size(); i++) {
+            if ("当前模型".equals(modelCompletions.get(i).description())) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private static boolean startsWithModelCommand(String value) {
+        return value != null
+            && value.length() >= "/model ".length()
+            && value.regionMatches(true, 0, "/model ", 0, "/model ".length());
+    }
+
     private void clearInput() {
         input.setLength(0);
         cursor = 0;
@@ -415,6 +453,14 @@ public class BruceTuiApp implements AutoCloseable {
 
     int scrollOffset() {
         return scrollOffset;
+    }
+
+    String inputText() {
+        return input.toString();
+    }
+
+    int selectedCompletion() {
+        return selectedCompletion;
     }
 
     private BruceStatusInfo status(String phase) {

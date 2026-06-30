@@ -18,25 +18,49 @@ Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
 
 - JDK 17+
 - Maven 3.9+
-- 显式配置 `LLM_PROVIDER=deepseek`、`LLM_PROVIDER=glm` 或 `LLM_PROVIDER=openai_compatiable`
-- DeepSeek/GLM 使用厂商变量：`DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` 或 `GLM_API_KEY` / `GLM_MODEL`
-- 通用 OpenAI-compatible provider 使用 `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`
+- 显式配置 `~/.brucecli/setting.json` 中的 `llm.providers`
 - 可选：智谱 GLM API Key，用于联网搜索（`GLM_API_KEY`）
-- 可选：智谱 GLM-5V，用于图片输入（配置 `LLM_PROVIDER=glm`、`GLM_MODEL=glm-5v`）
 - 可选：运行 Ollama，并安装 `nomic-embed-text` 以使用默认 RAG 配置
 
 ## 构建与运行
 
 ```bash
 cp .env.example .env
-# 编辑 .env，设置 LLM_PROVIDER 并填入对应 API Key / Model
-# 如需联网搜索，额外填入 GLM_API_KEY
-# 如需图片输入，配置 LLM_PROVIDER=glm 和 GLM_MODEL=glm-5v
+# 编辑 ~/.brucecli/setting.json，配置主聊天 LLM provider 和 API Key
+# 如需联网搜索，在 .env 中额外填入 GLM_API_KEY
 
 mvn clean test
 mvn clean package
 java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 ```
+
+LLM 配置读取自 `~/.brucecli/setting.json`：
+
+```json
+{
+  "llm": {
+    "defaultProvider": "deepseek",
+    "defaultModel": "deepseek-v4-flash",
+    "providers": {
+      "deepseek": {
+        "apiKey": "your_deepseek_key"
+      },
+      "glm": {
+        "apiKey": "your_glm_key"
+      },
+      "openai_compatiable": {
+        "apiKey": "your_key",
+        "baseUrl": "http://localhost:9000/v1",
+        "models": ["local-model"]
+      }
+    }
+  }
+}
+```
+
+`/model` 会列出可用模型并切换当前模型；选择成功后会写回
+`defaultProvider` 和 `defaultModel`，作为下次启动默认模型。DeepSeek 和 GLM 的
+可选模型由 provider 类内置；OpenAI-compatible 的可选模型来自 JSON 的 `models`。
 
 `mvn clean package` 会生成两个 jar：
 
@@ -72,6 +96,8 @@ mvn clean package && java -jar target/bruce-cli-1.0.0-SNAPSHOT-all.jar
 /react                  切换 ReAct 模式
 /plan                   切换 Plan-and-Execute 模式
 /multi                  切换 Multi-Agent 模式
+/model                  查看或选择模型
+/model <provider/model> 切换模型
 
 /memory status
 /memory save <内容>
@@ -131,24 +157,8 @@ ReAct 模式支持在用户输入中附加图片：
 @image:<file:///Users/bruce/Desktop/path with spaces.png>
 ```
 
-默认 DeepSeek 文本模型不一定支持视觉输入。可以显式切换到 GLM provider 和
-支持图片的模型：
-
-```env
-LLM_PROVIDER=glm
-GLM_API_KEY=your_glm_api_key_here
-GLM_MODEL=glm-5v
-```
-
-如需连接其他 OpenAI-compatible 服务，可使用固定 provider 值
-`openai_compatiable`：
-
-```env
-LLM_PROVIDER=openai_compatiable
-LLM_API_KEY=your_api_key_here
-LLM_MODEL=your_model_name_here
-LLM_BASE_URL=http://localhost:9000/v1
-```
+默认 DeepSeek 文本模型不一定支持视觉输入。可以执行 `/model` 切换到 GLM 的
+`glm-5v-turbo`，或切换到其他支持图片输入的 OpenAI-compatible 模型。
 
 图片会先预处理为 data URL：小图直通，透明 PNG 会铺白底，超大图片会等比缩放并压缩，
 同时在 Memory/RAG 中只保留不含 base64 的文字占位，避免长期记忆膨胀。

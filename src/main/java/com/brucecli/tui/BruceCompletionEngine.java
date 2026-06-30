@@ -1,6 +1,7 @@
 package com.brucecli.tui;
 
 import com.brucecli.integrated.runtime.IntegratedRuntime;
+import com.brucecli.llm.ModelOption;
 import com.brucecli.skill.SkillDefinition;
 
 import java.nio.file.Files;
@@ -37,6 +38,10 @@ public final class BruceCompletionEngine {
         String text = input == null ? "" : input;
         int safeCursor = Math.max(0, Math.min(cursor, text.length()));
         int start = wordStart(text, safeCursor);
+        if (text.substring(0, safeCursor).equalsIgnoreCase("/model")
+            && "Model".equals(item.group())) {
+            return "/model " + item.value() + text.substring(safeCursor);
+        }
         if (text.startsWith("/") && !text.substring(0, safeCursor).contains(" ")) {
             start = 0;
         }
@@ -44,6 +49,10 @@ public final class BruceCompletionEngine {
     }
 
     private static void completeSlash(String input, String word, IntegratedRuntime runtime, List<CompletionItem> candidates) {
+        if (input.equalsIgnoreCase("/model") || startsWithIgnoreCase(input, "/model ")) {
+            completeModel(input, runtime, candidates);
+            return;
+        }
         if (!input.contains(" ") && !input.endsWith(" ")) {
             addMatching(candidates, "bruce 命令", input, BruceSlashCommandHints.topLevel());
             return;
@@ -70,6 +79,27 @@ public final class BruceCompletionEngine {
                     completeImagePath(word, candidates);
                 }
             }
+        }
+    }
+
+    private static void completeModel(String input, IntegratedRuntime runtime, List<CompletionItem> candidates) {
+        String prefix = "";
+        if (startsWithIgnoreCase(input, "/model ")) {
+            prefix = input.length() <= 7 ? "" : input.substring(7).trim();
+        }
+        ModelOption current = runtime == null ? new ModelOption("", "") : runtime.currentModel();
+        for (ModelOption option : runtime == null ? List.<ModelOption>of() : runtime.modelOptions()) {
+            String selector = option.selector();
+            if (!matches(option.model(), prefix) && !matches(selector, prefix)) {
+                continue;
+            }
+            candidates.add(new CompletionItem(
+                selector,
+                option.display(),
+                option.matches(current) ? "当前模型" : "",
+                "Model",
+                true
+            ));
         }
     }
 
@@ -223,6 +253,12 @@ public final class BruceCompletionEngine {
 
     private static boolean matches(String value, String prefix) {
         return prefix == null || prefix.isBlank() || value.toLowerCase().startsWith(prefix.toLowerCase());
+    }
+
+    private static boolean startsWithIgnoreCase(String value, String prefix) {
+        return value != null
+            && value.length() >= prefix.length()
+            && value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
     private static BruceSlashCommandHints.SlashCommandHint option(String value, String description) {

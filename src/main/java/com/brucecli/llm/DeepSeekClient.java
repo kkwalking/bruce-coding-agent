@@ -17,6 +17,10 @@ public class DeepSeekClient extends OpenAiCompatibleChatClient {
     public static final String DEFAULT_BASE_URL = "https://api.deepseek.com";
     public static final String DEFAULT_API_URL = DEFAULT_BASE_URL + "/chat/completions";
     public static final String DEFAULT_MODEL = "deepseek-v4-flash";
+    public static final List<String> SUPPORTED_MODELS = List.of(
+        "deepseek-v4-flash",
+        "deepseek-v4-pro"
+    );
 
     public DeepSeekClient(String apiKey, String model) {
         this(apiKey, model, defaultDeepSeekHttpClient());

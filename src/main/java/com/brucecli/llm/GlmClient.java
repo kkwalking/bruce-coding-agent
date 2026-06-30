@@ -2,6 +2,8 @@ package com.brucecli.llm;
 
 import okhttp3.OkHttpClient;
 
+import java.util.List;
+
 /**
  * 智谱 GLM provider 客户端。
  *
@@ -13,6 +15,14 @@ public class GlmClient extends OpenAiCompatibleChatClient {
     public static final String CODING_API_URL = CODING_BASE_URL + "/chat/completions";
     public static final String MULTIMODAL_API_URL = MULTIMODAL_BASE_URL + "/chat/completions";
     public static final String DEFAULT_MODEL = "glm-5.1";
+    public static final List<String> SUPPORTED_MODELS = List.of(
+        "glm-4.5-air",
+        "glm-4.7",
+        "glm-5-turbo",
+        "glm-5.1",
+        "glm-5.2",
+        "glm-5v-turbo"
+    );
 
     public GlmClient(String apiKey, String model) {
         this(apiKey, model, defaultHttpClient());

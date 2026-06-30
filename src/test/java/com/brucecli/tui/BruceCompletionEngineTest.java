@@ -23,6 +23,7 @@ class BruceCompletionEngineTest {
             assertTrue(topLevel.contains("/status"));
             assertTrue(topLevel.contains("/session"));
             assertTrue(topLevel.contains("/tree "));
+            assertTrue(topLevel.contains("/model"));
 
             List<String> ragActions = values(BruceCompletionEngine.complete("/rag ", 5, context.runtime()));
             assertTrue(ragActions.contains("on"));
@@ -32,6 +33,22 @@ class BruceCompletionEngineTest {
             List<String> webCommands = values(BruceCompletionEngine.complete("/web s", 6, context.runtime()));
             assertTrue(webCommands.contains("search "));
             assertTrue(webCommands.contains("status"));
+        }
+    }
+
+    @Test
+    void completesModelSelectorWithProviderDisplay() throws Exception {
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir)) {
+            List<CompletionItem> candidates = BruceCompletionEngine.complete("/model", 6, context.runtime());
+
+            assertTrue(values(candidates).contains("glm/glm-5.1"));
+            assertTrue(candidates.stream().anyMatch(candidate -> candidate.display().equals("glm-5.1 [glm]")));
+            assertTrue(candidates.stream().anyMatch(candidate -> candidate.description().equals("当前模型")));
+            assertEquals("/model glm/glm-5.1", BruceCompletionEngine.applyCompletion(
+                "/model",
+                6,
+                new CompletionItem("glm/glm-5.1", "glm-5.1 [glm]", "", "Model", true)
+            ));
         }
     }
 

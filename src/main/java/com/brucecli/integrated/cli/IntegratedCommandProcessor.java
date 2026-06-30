@@ -2,6 +2,7 @@ package com.brucecli.integrated.cli;
 
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
+import com.brucecli.llm.ModelOption;
 import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.rag.model.IndexProgressListener;
 import com.brucecli.skill.SkillDefinition;
@@ -139,6 +140,7 @@ public class IntegratedCommandProcessor {
             React.class,
             Plan.class,
             Multi.class,
+            Model.class,
             Parallel.class,
             Rag.class,
             Index.class,
@@ -190,6 +192,11 @@ public class IntegratedCommandProcessor {
                   /react                 切换到 ReAct 模式
                   /plan                  切换到 Plan-and-Execute 模式
                   /multi                 切换到 Multi-Agent 模式
+
+                模型:
+                  /model                 查看或选择模型
+                  /model <provider/model>
+                                         切换模型，并保存为下次启动默认模型
 
                 RAG（默认关闭）:
                   /rag on|off|status
@@ -376,6 +383,25 @@ public class IntegratedCommandProcessor {
         public void run() {
             root.runtime.switchMode(AgentMode.MULTI);
             root.handled("已切换到 Multi-Agent 模式。");
+        }
+    }
+
+    @Command(name = "model")
+    private static class Model implements Runnable {
+        @ParentCommand SlashRoot root;
+        @Parameters(index = "0", arity = "0..1", description = "provider/model 或唯一模型名")
+        private String selector;
+
+        @Override
+        public void run() {
+            if (selector == null || selector.isBlank()) {
+                root.handled(renderModelList(root.runtime));
+                return;
+            }
+            ModelOption selected = root.runtime.switchModel(selector);
+            String savePath = root.runtime.modelSettingsPath();
+            root.handled("已切换到模型: " + selected.display()
+                + (savePath == null || savePath.isBlank() ? "" : "\n默认模型已保存到: " + savePath));
         }
     }
 
@@ -752,6 +778,31 @@ public class IntegratedCommandProcessor {
             }
         }
         appendSkillNotes(output, overrides, diagnostics);
+        return output.toString();
+    }
+
+    private static String renderModelList(IntegratedRuntime runtime) {
+        ModelOption current = runtime.currentModel();
+        List<ModelOption> options = runtime.modelOptions();
+        StringBuilder output = new StringBuilder("当前模型: ")
+            .append(current.display())
+            .append('\n')
+            .append("可用模型:");
+        if (options.isEmpty()) {
+            output.append("\n- 无");
+        } else {
+            for (ModelOption option : options) {
+                output.append("\n- ")
+                    .append(option.display());
+                if (option.matches(current)) {
+                    output.append(" (当前)");
+                }
+            }
+        }
+        String savePath = runtime.modelSettingsPath();
+        if (savePath != null && !savePath.isBlank()) {
+            output.append("\n配置文件: ").append(savePath);
+        }
         return output.toString();
     }
 

@@ -8,6 +8,8 @@ import java.util.List;
 
 public record RuntimeStatus(
     AgentMode mode,
+    String model,
+    String provider,
     Path workspaceRoot,
     MemoryStatus memoryStatus,
     boolean ragEnabled,
@@ -25,6 +27,7 @@ public record RuntimeStatus(
     public String toDisplayString() {
         return """
             当前模式: %s
+            当前模型: %s [%s]
             工作目录: %s
             Memory: (短期 %d 条 / %d tokens，长期 %d 条，最近注入 %d tokens)
             RAG: %s
@@ -37,6 +40,8 @@ public record RuntimeStatus(
             Tools: %s
             """.formatted(
                 mode,
+                model,
+                provider,
                 workspaceRoot,
                 memoryStatus.shortTermEntries(),
                 memoryStatus.shortTermTokens(),

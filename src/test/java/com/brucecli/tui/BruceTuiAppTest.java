@@ -3,6 +3,8 @@ package com.brucecli.tui;
 import com.brucecli.integrated.cli.IntegratedCliTestSupport;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.MouseAction;
 import com.googlecode.lanterna.input.MouseActionType;
 import com.googlecode.lanterna.screen.TerminalScreen;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,8 +71,66 @@ class BruceTuiAppTest {
         }
     }
 
+    @Test
+    void enterOnModelCommandOpensSelectorThenSwitchesModel() throws Exception {
+        try (
+            IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir);
+            TestScreen testScreen = testScreen();
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(testScreen.screen());
+        ) {
+            List<String> submittedInputs = new ArrayList<>();
+            BruceTuiApp app = new BruceTuiApp(
+                testScreen.screen(),
+                renderer,
+                context.runtime(),
+                context.chatClient(),
+                input -> {
+                    submittedInputs.add(input);
+                    var result = context.commands().handle(input);
+                    return new TuiCommandResult(result.handled(), result.exit(), result.output());
+                },
+                tempDir
+            );
+            try (app) {
+                type(app, "/model");
+                List<CompletionItem> initial = BruceCompletionEngine.complete("/model", "/model".length(), context.runtime());
+
+                app.handleKey(new KeyStroke(KeyType.Enter), initial);
+                assertEquals("/model ", app.inputText());
+                List<CompletionItem> opened = BruceCompletionEngine.complete("/model ", "/model ".length(), context.runtime());
+                assertEquals(2, opened.size());
+                app.handleKey(new KeyStroke(KeyType.ArrowDown), opened);
+                assertEquals(1, app.selectedCompletion());
+                app.handleKey(new KeyStroke(KeyType.Enter), opened);
+                waitForModel(context, "glm", "glm-5.1");
+
+                assertTrue(submittedInputs.contains("/model glm/glm-5.1"));
+                assertEquals("glm", context.runtime().currentModel().provider());
+                assertEquals("glm-5.1", context.runtime().currentModel().model());
+            }
+        }
+    }
+
     private static MouseAction mouse(MouseActionType type) {
         return new MouseAction(type, 0, new TerminalPosition(0, 0));
+    }
+
+    private static void type(BruceTuiApp app, String text) {
+        for (char ch : text.toCharArray()) {
+            app.handleKey(new KeyStroke(ch, false, false), List.of());
+        }
+    }
+
+    private static void waitForModel(IntegratedCliTestSupport.TestContext context, String provider, String model)
+        throws Exception {
+        long deadline = System.currentTimeMillis() + 2_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (provider.equals(context.runtime().currentModel().provider())
+                && model.equals(context.runtime().currentModel().model())) {
+                return;
+            }
+            Thread.sleep(25);
+        }
     }
 
     private static TestScreen testScreen() throws Exception {
