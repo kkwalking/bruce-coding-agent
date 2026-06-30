@@ -110,6 +110,48 @@ class IntegratedRuntimeTest {
     }
 
     @Test
+    void reactModeLoadsAgentInstructionsForEachRun() throws Exception {
+        write(tempDir.resolve("home/.bruce/AGENTS.md"), "global agents v1");
+        write(tempDir.resolve("AGENTS.md"), "project agents v1");
+        CapturingChatClient chatClient = new CapturingChatClient(
+            text("first answer"),
+            text("second answer")
+        );
+
+        try (TestContext context = context(chatClient)) {
+            assertEquals("first answer", context.runtime.run("第一轮"));
+            assertTrue(hasSystemMessageContaining(chatClient.allMessages.get(0), "global agents v1", "project agents v1"));
+
+            write(tempDir.resolve("home/.bruce/AGENTS.md"), "global agents v2");
+            write(tempDir.resolve("AGENTS.md"), "project agents v2");
+
+            assertEquals("second answer", context.runtime.run("第二轮"));
+            List<Message> secondRunMessages = chatClient.allMessages.get(1);
+            assertTrue(hasSystemMessageContaining(secondRunMessages, "global agents v2", "project agents v2"));
+            assertFalse(hasSystemMessageContaining(secondRunMessages, "global agents v1"));
+            assertFalse(hasSystemMessageContaining(secondRunMessages, "project agents v1"));
+        }
+    }
+
+    @Test
+    void planModeReceivesAgentInstructions() throws Exception {
+        write(tempDir.resolve("home/.bruce/AGENTS.md"), "global plan agents");
+        write(tempDir.resolve("AGENTS.md"), "project plan agents");
+        CapturingChatClient chatClient = new CapturingChatClient(planResponse());
+
+        try (TestContext context = context(chatClient)) {
+            context.commands.handle("/plan");
+            context.runtime.run("计划任务");
+
+            assertTrue(hasSystemMessageContaining(
+                chatClient.allMessages.get(0),
+                "global plan agents",
+                "project plan agents"
+            ));
+        }
+    }
+
+    @Test
     void sessionHistorySurvivesFeatureRebuild() throws Exception {
         CapturingChatClient chatClient = new CapturingChatClient(
             text("first answer"),
@@ -380,6 +422,21 @@ class IntegratedRuntimeTest {
             .map(Message::content)
             .filter(content -> content != null)
             .reduce("", (left, right) -> left + "\n" + right);
+    }
+
+    private static boolean hasSystemMessageContaining(List<Message> messages, String... values) {
+        return messages.stream()
+            .filter(message -> "system".equals(message.role()))
+            .map(Message::content)
+            .filter(content -> content != null)
+            .anyMatch(content -> {
+                for (String value : values) {
+                    if (!content.contains(value)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
     }
 
     private static void assertSkillToolDefinitionsAreBrandNeutral(List<ToolDefinition> tools) {
@@ -713,8 +770,30 @@ class IntegratedRuntimeTest {
         return directory;
     }
 
+    private void write(Path file, String content) throws Exception {
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, content);
+    }
+
     private static ChatResponse text(String content) {
         return new ChatResponse(content, List.of());
+    }
+
+    private static ChatResponse planResponse() {
+        return text("""
+            {
+              "goal": "计划任务",
+              "summary": "测试计划",
+              "tasks": [
+                {
+                  "id": "t1",
+                  "description": "分析任务",
+                  "type": "ANALYSIS",
+                  "dependencies": []
+                }
+              ]
+            }
+            """);
     }
 
     private static ToolCall toolCall(String id, String name, String arguments) {

@@ -138,6 +138,15 @@ public class SubAgent {
     }
 
     public AgentMessage review(String stepDescription, String executionResult, PrintStream out) {
+        return review(stepDescription, executionResult, "", out);
+    }
+
+    public AgentMessage review(
+        String stepDescription,
+        String executionResult,
+        String taskSystemContext,
+        PrintStream out
+    ) {
         ensureRole(AgentRole.REVIEWER);
         String input = """
             请审查 Worker 的执行结果是否满足步骤要求。
@@ -158,7 +167,7 @@ public class SubAgent {
 
             如果证据不足、结果含糊、没有完成步骤要求，approved 必须为 false。
             """.formatted(stepDescription, executionResult);
-        return run(input, "", false, AgentMessage.Type.RESULT, out);
+        return run(input, taskSystemContext, false, AgentMessage.Type.RESULT, out);
     }
 
     public synchronized void clearHistory() {

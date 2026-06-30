@@ -296,7 +296,7 @@ public class AgentOrchestrator implements AutoCloseable {
                     return;
                 }
 
-                AgentMessage review = reviewer.review(step.description(), result.content(), out);
+                AgentMessage review = reviewer.review(step.description(), result.content(), taskSkillContext, out);
                 boolean approved = parseReviewApproval(review.content());
                 if (approved) {
                     out.printf("[reviewer] %s 审查通过%n", step.id());

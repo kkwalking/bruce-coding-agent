@@ -205,6 +205,27 @@ $java-review $security-review 审查登录模块
 
 注意：显式前缀只对当前单次任务生效。 当前暂不支持执行 Skill 中的脚本。
 
+## AGENTS.md 指令
+
+Bruce Coding Agent 会在每次用户任务开始时读取 AGENTS 指令，并作为当轮 system context 注入。文件修改后，下一条用户输入立即生效；已经开始执行的单轮任务不会中途刷新。
+
+读取顺序：
+
+```text
+~/.bruce/AGENTS.md
+<Git root>/AGENTS.md
+<Git root 到当前工作目录之间的子目录>/AGENTS.md
+<当前工作目录>/AGENTS.md
+```
+
+越靠近当前工作目录的项目级 `AGENTS.md` 越靠后，因此优先级更高。如果当前工作目录不在 Git 仓库中，只读取当前工作目录下的 `AGENTS.md`。
+
+当前限制：
+
+- 不读取 `AGENTS.override.md`。
+- 不展开 `@/path/to/file.md` 这类文档引用；内容会原样传给模型。
+- AGENTS 指令总量固定最多 32768 bytes，超过后截断。
+
 ## 联网搜索配置
 
 WebSearch 读取 `~/.bruce/setting.json` 的 `webSearch`。`provider` 支持 `zhipu` / `glm` / `bigmodel`、`serpapi`、`searxng` / `searx`；未显式配置时会按已填写的 key 或 url 自动选择，最后回退到智谱。

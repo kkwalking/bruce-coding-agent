@@ -19,6 +19,8 @@ import com.brucecli.llm.Message;
 import com.brucecli.llm.ModelOption;
 import com.brucecli.llm.ModelSelectionService;
 import com.brucecli.llm.PreparedUserInput;
+import com.brucecli.instructions.AgentInstructionsLoadResult;
+import com.brucecli.instructions.AgentInstructionsLoader;
 import com.brucecli.memory.core.MemoryContext;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.memory.core.MemoryStatus;
@@ -110,8 +112,10 @@ public class IntegratedRuntime implements AutoCloseable {
     private final BruceEventBus eventBus = new BruceEventBus();
     private final McpServerManager mcpManager;
     private final SkillManager skillManager;
+    private final AgentInstructionsLoader agentInstructionsLoader = new AgentInstructionsLoader();
     private final SkillInvocationParser skillInvocationParser = new SkillInvocationParser();
     private final SessionManager sessionManager;
+    private final Path userHome;
 
     private String mcpStartupError;
     private Path workspaceRoot;
@@ -269,11 +273,14 @@ public class IntegratedRuntime implements AutoCloseable {
         this.concurrencyConfig = concurrencyConfig;
         this.webSearchConfig = webSearchConfig == null ? WebSearchConfig.empty() : webSearchConfig;
         this.progressOut = progressOut == null ? System.out : progressOut;
+        this.userHome = skillUserHome == null
+            ? Path.of(System.getProperty("user.home")).toAbsolutePath().normalize()
+            : skillUserHome.toAbsolutePath().normalize();
         McpStartup startup = createMcpManager(this.workspaceRoot, mcpConfig);
         this.mcpManager = startup.manager();
         this.mcpStartupError = startup.error();
-        this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
-        this.sessionManager = SessionManager.createNew(skillUserHome, this.workspaceRoot, mode);
+        this.skillManager = new SkillManager(this.userHome, this.workspaceRoot);
+        this.sessionManager = SessionManager.createNew(this.userHome, this.workspaceRoot, mode);
         this.eventBus.subscribe(new SessionEventRecorder(
             sessionManager,
             message -> this.progressOut.println(message)
@@ -318,14 +325,16 @@ public class IntegratedRuntime implements AutoCloseable {
         SkillInvocation invocation = skillInvocationParser.parse(input);
         PreparedUserInput preparedInput = ImageReferenceParser.parse(invocation.task(), workspaceRoot);
         emit(new BruceEvents.RunStarted(runId, mode, preparedInput.text()));
+        AgentInstructionsLoadResult agentInstructions = agentInstructionsLoader.load(userHome, workspaceRoot);
+        emitAgentInstructionDiagnostics(agentInstructions);
         skillManager.beginTask();
         try {
             for (String skillName : invocation.skillNames()) {
                 skillManager.loadSkill(skillName);
             }
             String taskSystemContext = joinContext(
-                skillManager.catalogPrompt(),
-                skillManager.activeInstructions()
+                agentInstructions.prompt(),
+                joinContext(skillManager.catalogPrompt(), skillManager.activeInstructions())
             );
             String result = switch (mode) {
                 case REACT -> runReact(preparedInput, taskSystemContext, runId);
@@ -811,6 +820,12 @@ public class IntegratedRuntime implements AutoCloseable {
             instructions = joinContext(instructions, PARALLEL_AGENT_INSTRUCTIONS);
         }
         return instructions;
+    }
+
+    private void emitAgentInstructionDiagnostics(AgentInstructionsLoadResult result) {
+        for (String diagnostic : result.diagnostics()) {
+            emit(new BruceEvents.Activity(null, diagnostic));
+        }
     }
 
     private ToolCallExecutor toolCallBatchExecutor() {
