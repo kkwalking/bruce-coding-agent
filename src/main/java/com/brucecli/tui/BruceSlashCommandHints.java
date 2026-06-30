@@ -1,39 +1,49 @@
 package com.brucecli.tui;
 
+import com.brucecli.integrated.cli.IntegratedCommandProcessor;
+
+import java.util.ArrayList;
 import java.util.List;
 
 final class BruceSlashCommandHints {
-    private static final List<SlashCommandHint> TOP_LEVEL = List.of(
-        hint("/react", "切换到 ReAct 模式"),
-        hint("/plan", "切换到 Plan-and-Execute 模式"),
-        hint("/multi", "切换到 Multi-Agent 模式"),
-        hint("/model", "选择模型"),
-        hint("/rag ", "RAG 开关和状态"),
-        hint("/index ", "建立代码索引"),
-        hint("/search ", "搜索代码索引"),
-        hint("/graph ", "查看图谱"),
-        hint("/web ", "Web 开关和搜索"),
-        hint("/mcp ", "MCP server 管理"),
-        hint("/memory ", "长期记忆"),
-        hint("/hitl ", "HITL 开关和状态"),
-        hint("/parallel ", "并行执行开关和状态"),
-        hint("/skill ", "Skill 管理"),
-        hint("/status", "查看统一运行状态"),
-        hint("/session", "查看当前 session"),
-        hint("/sessions", "列出最近 session"),
-        hint("/new", "新建 session"),
-        hint("/resume ", "恢复 session"),
-        hint("/tree ", "查看或切换 session 树"),
-        hint("/clear", "开启新 session"),
-        hint("/help", "查看帮助"),
-        hint("/exit", "退出 bruce")
-    );
+    private static final List<SlashCommandHint> TOP_LEVEL = createTopLevel(false);
+    private static final List<SlashCommandHint> TOP_LEVEL_WITH_RAG = createTopLevel(true);
 
     private BruceSlashCommandHints() {
     }
 
     static List<SlashCommandHint> topLevel() {
-        return TOP_LEVEL;
+        return IntegratedCommandProcessor.ragSlashCommandsEnabled() ? TOP_LEVEL_WITH_RAG : TOP_LEVEL;
+    }
+
+    private static List<SlashCommandHint> createTopLevel(boolean includeRag) {
+        List<SlashCommandHint> hints = new ArrayList<>();
+        hints.add(hint("/react", "切换到 ReAct 模式"));
+        hints.add(hint("/plan", "切换到 Plan-and-Execute 模式"));
+        hints.add(hint("/multi", "切换到 Multi-Agent 模式"));
+        hints.add(hint("/model", "选择模型"));
+        if (includeRag) {
+            hints.add(hint("/rag ", "RAG 开关和状态"));
+            hints.add(hint("/index ", "建立代码索引"));
+            hints.add(hint("/search ", "搜索代码索引"));
+            hints.add(hint("/graph ", "查看图谱"));
+        }
+        hints.add(hint("/web ", "Web 开关和搜索"));
+        hints.add(hint("/mcp ", "MCP server 管理"));
+        hints.add(hint("/memory ", "长期记忆"));
+        hints.add(hint("/hitl ", "HITL 开关和状态"));
+        hints.add(hint("/parallel ", "并行执行开关和状态"));
+        hints.add(hint("/skill ", "Skill 管理"));
+        hints.add(hint("/status", "查看统一运行状态"));
+        hints.add(hint("/session", "查看当前 session"));
+        hints.add(hint("/sessions", "列出最近 session"));
+        hints.add(hint("/new", "新建 session"));
+        hints.add(hint("/resume ", "恢复 session"));
+        hints.add(hint("/tree ", "查看或切换 session 树"));
+        hints.add(hint("/clear", "开启新 session"));
+        hints.add(hint("/help", "查看帮助"));
+        hints.add(hint("/exit", "退出 bruce"));
+        return List.copyOf(hints);
     }
 
     private static SlashCommandHint hint(String value, String description) {

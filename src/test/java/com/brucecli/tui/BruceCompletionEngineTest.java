@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BruceCompletionEngineTest {
@@ -24,11 +25,13 @@ class BruceCompletionEngineTest {
             assertTrue(topLevel.contains("/session"));
             assertTrue(topLevel.contains("/tree "));
             assertTrue(topLevel.contains("/model"));
+            assertFalse(topLevel.contains("/rag "));
+            assertFalse(topLevel.contains("/index "));
+            assertFalse(topLevel.contains("/search "));
+            assertFalse(topLevel.contains("/graph "));
 
             List<String> ragActions = values(BruceCompletionEngine.complete("/rag ", 5, context.runtime()));
-            assertTrue(ragActions.contains("on"));
-            assertTrue(ragActions.contains("off"));
-            assertTrue(ragActions.contains("status"));
+            assertTrue(ragActions.isEmpty());
 
             List<String> webCommands = values(BruceCompletionEngine.complete("/web s", 6, context.runtime()));
             assertTrue(webCommands.contains("search "));
