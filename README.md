@@ -1,18 +1,33 @@
 # Bruce CLI
 
-Bruce CLI 是一个单模块 Maven 项目，完整集成以下 Agent 能力：
+Bruce CLI 是一个单模块 Maven 项目，完整集成 Agent 运行时、记忆、检索、工具接入与 CLI 会话能力。
 
-- ReAct + Tool Call
-- Plan-and-Execute DAG
+## 核心特性
+
+### Agent Runtime
+
+- ReAct 推理与 Tool Calling
+- Plan-and-Execute：基于 DAG 的任务规划与执行
+- ReAct / Plan / Multi-Agent 多执行模式
+- Human-in-the-Loop 审批机制
+
+### Memory & Context
+
 - 短期记忆、长期记忆与上下文压缩
-- Multi-Agent 与 SubAgent
-- SQLite + Embedding 代码 RAG
-- WebSearch + WebFetch 联网搜索与网页抓取
-- MCP stdio / Streamable HTTP 工具接入
-- Bruce Agent Skills 渐进式工作流加载
-- HITL 人工审批
-- ReAct、Plan、Multi-Agent 并行执行
-- LLM 多模态图片输入（`@image:` / `@clipboard`）
+- JSONL 会话存储，支持 `/resume <id|path>` 恢复历史
+- `/tree [entryId]` 查看会话树，并从历史节点分支续聊
+
+### Tools & Retrieval
+
+- 基于 SQLite + Embedding 的代码 RAG
+- WebSearch / WebFetch 联网搜索与网页抓取
+- 支持 MCP stdio / Streamable HTTP 工具接入
+- Agent Skills 渐进式工作流加载
+
+### Model Capability
+
+- 多模态图片输入（`@image:` / `@clipboard`）
+- `/model` 模型切换
 
 ## 环境要求
 
