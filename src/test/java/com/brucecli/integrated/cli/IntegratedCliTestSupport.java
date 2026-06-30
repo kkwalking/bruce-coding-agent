@@ -3,6 +3,7 @@ package com.brucecli.integrated.cli;
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;
 import com.brucecli.approval.HitlHandler;
+import com.brucecli.config.BruceSettingsLoader;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatResponse;
@@ -14,6 +15,8 @@ import com.brucecli.memory.core.ConversationMemory;
 import com.brucecli.memory.core.LongTermMemory;
 import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.memory.model.MemoryEntry;
+import com.brucecli.mcp.config.McpConfig;
+import com.brucecli.mcp.config.McpConfigLoader;
 import com.brucecli.rag.embedding.EmbeddingClient;
 import com.brucecli.runtime.ConcurrencyConfig;
 import com.brucecli.web.search.WebSearchConfig;
@@ -39,6 +42,9 @@ public final class IntegratedCliTestSupport {
     }
 
     public static TestContext context(Path tempDir, PrintStream out, ChatClient chatClient) throws Exception {
+        Path testHome = tempDir.resolve("home");
+        BruceSettingsLoader settingsLoader = new BruceSettingsLoader(testHome.resolve(".bruce/setting.json"));
+        McpConfig mcpConfig = new McpConfigLoader(tempDir, settingsLoader).load();
         MemoryManager memoryManager = new MemoryManager(
             new ConversationMemory(1_000),
             new LongTermMemory(tempDir.resolve("memory")),
@@ -53,8 +59,9 @@ public final class IntegratedCliTestSupport {
             new EnabledHitlHandler(),
             WebSearchConfig.empty(),
             new ConcurrencyConfig(4, Duration.ofSeconds(2), 2_000),
-            tempDir.resolve("home"),
-            out
+            testHome,
+            out,
+            mcpConfig
         );
         return new TestContext(
             runtime,
@@ -78,15 +85,17 @@ public final class IntegratedCliTestSupport {
     }
 
     public static void writeDisabledMcpServer(Path tempDir, String name) throws Exception {
-        Path config = tempDir.resolve(".bruce/mcp.json");
+        Path config = tempDir.resolve("home/.bruce/setting.json");
         Files.createDirectories(config.getParent());
         Files.writeString(config, """
             {
-              "mcpServers": {
-                "%s": {
-                  "command": "echo",
-                  "args": ["ok"],
-                  "disabled": true
+              "mcp": {
+                "servers": {
+                  "%s": {
+                    "command": "echo",
+                    "args": ["ok"],
+                    "disabled": true
+                  }
                 }
               }
             }

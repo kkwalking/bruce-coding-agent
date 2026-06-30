@@ -1,5 +1,6 @@
 package com.brucecli.rag.embedding;
 
+import com.brucecli.config.BruceSettings;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -31,12 +32,11 @@ class EmbeddingClientTest {
         });
         server.start();
         try {
-            EmbeddingClient client = new EmbeddingClient(
-                "ollama",
-                "nomic-embed-text:latest",
-                "http://127.0.0.1:" + server.getAddress().getPort(),
-                ""
-            );
+            BruceSettings.EmbeddingSettings settings = new BruceSettings.EmbeddingSettings();
+            settings.setProvider("ollama");
+            settings.setModel("nomic-embed-text:latest");
+            settings.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            EmbeddingClient client = EmbeddingClient.fromSettings(settings);
 
             float[] embedding = client.embed("hello agent");
 

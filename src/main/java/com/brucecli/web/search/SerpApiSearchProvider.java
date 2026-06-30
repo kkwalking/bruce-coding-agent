@@ -42,7 +42,7 @@ public class SerpApiSearchProvider implements SearchProvider {
 
     @Override
     public String unavailableHint() {
-        return "SerpAPI 未配置：请设置 SERPAPI_KEY，或改用 GLM_API_KEY/SEARXNG_URL。";
+        return "SerpAPI 未配置：请在 ~/.bruce/setting.json 中设置 webSearch.serpapi.apiKey，或切换 webSearch.provider。";
     }
 
     @Override

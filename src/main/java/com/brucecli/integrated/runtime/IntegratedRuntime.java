@@ -24,6 +24,7 @@ import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.memory.core.MemoryStatus;
 import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.memory.tool.MemoryToolRegistrar;
+import com.brucecli.mcp.config.McpConfig;
 import com.brucecli.mcp.runtime.McpServerManager;
 import com.brucecli.agent.multi.AgentOrchestrator;
 import com.brucecli.plan.agent.PlanAndExecuteAgent;
@@ -231,6 +232,34 @@ public class IntegratedRuntime implements AutoCloseable {
         Path skillUserHome,
         PrintStream progressOut
     ) {
+        this(
+            chatClient,
+            workspaceRoot,
+            memoryManager,
+            embeddingClient,
+            ragDbFile,
+            hitlHandler,
+            webSearchConfig,
+            concurrencyConfig,
+            skillUserHome,
+            progressOut,
+            null
+        );
+    }
+
+    public IntegratedRuntime(
+        ChatClient chatClient,
+        Path workspaceRoot,
+        MemoryManager memoryManager,
+        EmbeddingClient embeddingClient,
+        Path ragDbFile,
+        HitlHandler hitlHandler,
+        WebSearchConfig webSearchConfig,
+        ConcurrencyConfig concurrencyConfig,
+        Path skillUserHome,
+        PrintStream progressOut,
+        McpConfig mcpConfig
+    ) {
         this.chatClient = chatClient;
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.memoryManager = memoryManager;
@@ -240,7 +269,7 @@ public class IntegratedRuntime implements AutoCloseable {
         this.concurrencyConfig = concurrencyConfig;
         this.webSearchConfig = webSearchConfig == null ? WebSearchConfig.empty() : webSearchConfig;
         this.progressOut = progressOut == null ? System.out : progressOut;
-        McpStartup startup = createMcpManager(this.workspaceRoot);
+        McpStartup startup = createMcpManager(this.workspaceRoot, mcpConfig);
         this.mcpManager = startup.manager();
         this.mcpStartupError = startup.error();
         this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
@@ -877,11 +906,11 @@ public class IntegratedRuntime implements AutoCloseable {
         return chatClient instanceof ModelSelectionService service ? service : null;
     }
 
-    private McpStartup createMcpManager(Path root) {
+    private McpStartup createMcpManager(Path root, McpConfig config) {
         try {
-            McpServerManager manager = new McpServerManager(root, message ->
-                emit(new BruceEvents.Activity(null, message))
-            );
+            McpServerManager manager = config == null
+                ? new McpServerManager(root, message -> emit(new BruceEvents.Activity(null, message)))
+                : new McpServerManager(root, config, message -> emit(new BruceEvents.Activity(null, message)));
             return new McpStartup(manager, "");
         } catch (Exception e) {
             return new McpStartup(null, e.getMessage());

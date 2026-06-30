@@ -41,12 +41,12 @@ public class ZhipuSearchProvider implements SearchProvider {
 
     @Override
     public boolean isReady() {
-        return config.hasGlmApiKey();
+        return config.hasZhipuApiKey();
     }
 
     @Override
     public String unavailableHint() {
-        return "智谱搜索未配置：请设置 GLM_API_KEY。注意它和 DEEPSEEK_API_KEY 是两套环境变量。";
+        return "智谱搜索未配置：请在 ~/.bruce/setting.json 中设置 webSearch.zhipu.apiKey。";
     }
 
     @Override
@@ -57,15 +57,15 @@ public class ZhipuSearchProvider implements SearchProvider {
 
         ObjectNode payload = mapper.createObjectNode();
         payload.put("search_query", normalizeQuery(query));
-        payload.put("search_engine", config.glmSearchEngine());
+        payload.put("search_engine", config.zhipuSearchEngine());
         payload.put("search_intent", false);
         payload.put("count", clamp(topK, 1, 50));
         payload.put("search_recency_filter", "noLimit");
-        payload.put("content_size", config.glmContentSize());
+        payload.put("content_size", config.zhipuContentSize());
 
         Request request = new Request.Builder()
             .url(config.zhipuEndpoint())
-            .header("Authorization", "Bearer " + config.glmApiKey())
+            .header("Authorization", "Bearer " + config.zhipuApiKey())
             .header("Content-Type", "application/json")
             .post(RequestBody.create(payload.toString(), JSON))
             .build();

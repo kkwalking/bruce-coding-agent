@@ -204,10 +204,10 @@ public class IntegratedCommandProcessor {
                   /search <query>        手动观察代码混合检索结果
                   /graph <name>          查看类或方法关系图谱
 
-                Web（默认开启）:
-                  /web on|off|status
-                  /web search <query>    手动联网搜索，使用 GLM_API_KEY 等独立配置
-                  /web fetch <url>       抓取网页正文
+	                Web（默认开启）:
+	                  /web on|off|status
+	                  /web search <query>    手动联网搜索，配置读取自 ~/.bruce/setting.json
+	                  /web fetch <url>       抓取网页正文
 
                 MCP:
                   /mcp                   查看 MCP server 状态

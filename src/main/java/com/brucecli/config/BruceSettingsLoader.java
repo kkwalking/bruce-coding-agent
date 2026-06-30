@@ -27,6 +27,17 @@ public class BruceSettingsLoader {
             .normalize();
     }
 
+    public static Path resolveUserPath(String value) {
+        String path = value == null || value.isBlank() ? "." : value.trim();
+        if ("~".equals(path)) {
+            return Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+        }
+        if (path.startsWith("~/")) {
+            return Path.of(System.getProperty("user.home"), path.substring(2)).toAbsolutePath().normalize();
+        }
+        return Path.of(path).toAbsolutePath().normalize();
+    }
+
     public Path settingsFile() {
         return settingsFile;
     }

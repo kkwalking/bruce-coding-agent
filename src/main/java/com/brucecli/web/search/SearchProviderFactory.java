@@ -21,7 +21,7 @@ public class SearchProviderFactory {
         WebSearchConfig effective = config == null ? WebSearchConfig.empty() : config;
         String provider = pickProvider(
             effective.provider(),
-            effective.glmApiKey(),
+            effective.zhipuApiKey(),
             effective.serpApiKey(),
             effective.searxngUrl()
         );
@@ -31,16 +31,16 @@ public class SearchProviderFactory {
             case "searxng", "searx" -> new SearxngSearchProvider(effective.searxngUrl(), httpClient);
             default -> new UnavailableSearchProvider(
                 provider,
-                "未知 SEARCH_PROVIDER: " + provider + "，支持 zhipu/glm、serpapi、searxng"
+                "未知 webSearch.provider: " + provider + "，支持 zhipu/glm、serpapi、searxng"
             );
         };
     }
 
-    static String pickProvider(String explicit, String glmKey, String serpKey, String searxngUrl) {
+    static String pickProvider(String explicit, String zhipuKey, String serpKey, String searxngUrl) {
         if (explicit != null && !explicit.isBlank()) {
             return explicit.trim().toLowerCase(Locale.ROOT);
         }
-        if (glmKey != null && !glmKey.isBlank()) {
+        if (zhipuKey != null && !zhipuKey.isBlank()) {
             return "zhipu";
         }
         if (serpKey != null && !serpKey.isBlank()) {

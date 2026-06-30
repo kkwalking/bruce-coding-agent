@@ -241,7 +241,7 @@ entries:
 压缩摘要不是长期记忆。
 
 - 压缩摘要来自短期对话历史，主要解决“当前会话太长”的问题。
-- 长期记忆来自 `/memory save` 或 `save_long_term_memory`，会落盘到 `~/.brucecli/memory/long_term_memory.json`，主要解决“跨会话复用”的问题。
+- 长期记忆来自 `/memory save` 或 `save_long_term_memory`，会落盘到 `~/.bruce/memory/long_term_memory.json`，主要解决“跨会话复用”的问题。
 
 每轮上下文会同时包含二者：长期记忆负责稳定事实，压缩摘要负责当前会话历史。
 

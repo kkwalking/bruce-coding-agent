@@ -72,6 +72,16 @@ public class McpServerManager implements AutoCloseable {
         );
     }
 
+    public McpServerManager(Path workspaceRoot, McpConfig config, Consumer<String> progressReporter) {
+        this(
+            workspaceRoot,
+            config,
+            new McpTransportFactory(),
+            progressReporter,
+            DEFAULT_PROGRESS_INTERVAL
+        );
+    }
+
     McpServerManager(Path workspaceRoot, McpConfig config, McpTransportFactory transportFactory) {
         this(workspaceRoot, config, transportFactory, progressReporter(System.out), DEFAULT_PROGRESS_INTERVAL);
     }
@@ -210,9 +220,7 @@ public class McpServerManager implements AutoCloseable {
         if (!configured()) {
             return """
                 MCP server：未配置。
-                配置文件位置：
-                - ~/.bruce/mcp.json
-                - .bruce/mcp.json
+                配置位置：~/.bruce/setting.json 的 mcp.servers
                 """.trim();
         }
         StringBuilder builder = new StringBuilder("MCP server 状态:\n");

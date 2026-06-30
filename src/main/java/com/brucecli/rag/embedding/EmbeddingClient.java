@@ -1,5 +1,6 @@
 package com.brucecli.rag.embedding;
 
+import com.brucecli.config.BruceSettings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -39,6 +40,16 @@ public class EmbeddingClient {
             .connectTimeout(Duration.ofSeconds(30))
             .readTimeout(120, TimeUnit.SECONDS)
             .build());
+    }
+
+    public static EmbeddingClient fromSettings(BruceSettings.EmbeddingSettings settings) {
+        BruceSettings.EmbeddingSettings source = settings == null ? new BruceSettings.EmbeddingSettings() : settings;
+        return new EmbeddingClient(
+            source.getProvider(),
+            source.getModel(),
+            source.getBaseUrl(),
+            source.getApiKey()
+        );
     }
 
     EmbeddingClient(String provider, String model, String baseUrl, String apiKey, OkHttpClient httpClient) {
