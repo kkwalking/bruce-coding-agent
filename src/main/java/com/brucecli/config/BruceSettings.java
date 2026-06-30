@@ -12,7 +12,6 @@ public class BruceSettings {
     private LlmSettings llm = new LlmSettings();
     private WebSearchSettings webSearch = new WebSearchSettings();
     private EmbeddingSettings embedding = new EmbeddingSettings();
-    private StorageSettings storage = new StorageSettings();
     private McpSettings mcp = new McpSettings();
     private Map<String, String> variables = new LinkedHashMap<>();
 
@@ -47,17 +46,6 @@ public class BruceSettings {
 
     public void setEmbedding(EmbeddingSettings embedding) {
         this.embedding = embedding == null ? new EmbeddingSettings() : embedding;
-    }
-
-    public StorageSettings getStorage() {
-        if (storage == null) {
-            storage = new StorageSettings();
-        }
-        return storage;
-    }
-
-    public void setStorage(StorageSettings storage) {
-        this.storage = storage == null ? new StorageSettings() : storage;
     }
 
     public McpSettings getMcp() {
@@ -302,28 +290,6 @@ public class BruceSettings {
 
         public void setApiKey(String apiKey) {
             this.apiKey = apiKey;
-        }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class StorageSettings {
-        private String memoryDir = "~/.bruce/memory";
-        private String ragDir = "~/.bruce/rag";
-
-        public String getMemoryDir() {
-            return memoryDir;
-        }
-
-        public void setMemoryDir(String memoryDir) {
-            this.memoryDir = memoryDir;
-        }
-
-        public String getRagDir() {
-            return ragDir;
-        }
-
-        public void setRagDir(String ragDir) {
-            this.ragDir = ragDir;
         }
     }
 

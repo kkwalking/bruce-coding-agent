@@ -12,6 +12,7 @@ import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.mcp.config.McpConfig;
 import com.brucecli.mcp.config.McpConfigLoader;
 import com.brucecli.rag.embedding.EmbeddingClient;
+import com.brucecli.rag.store.VectorStore;
 import com.brucecli.runtime.ConcurrencyConfig;
 import com.brucecli.tui.BruceTuiApp;
 import com.brucecli.tui.LanternaBruceRenderer;
@@ -58,12 +59,12 @@ public class IntegratedMain {
                 }
                 MemoryManager memoryManager = new MemoryManager(
                     new ConversationMemory(8_000),
-                    new LongTermMemory(BruceSettingsLoader.resolveUserPath(settings.getStorage().getMemoryDir())),
+                    new LongTermMemory(),
                     new LlmContextCompressor(chatClient)
                 );
                 EmbeddingClient embeddingClient = EmbeddingClient.fromSettings(settings.getEmbedding());
                 WebSearchConfig webSearchConfig = WebSearchConfig.fromSettings(settings.getWebSearch());
-                Path ragDbFile = BruceSettingsLoader.resolveUserPath(settings.getStorage().getRagDir()).resolve("codebase.db");
+                Path ragDbFile = VectorStore.defaultDbPath();
 
                 try (IntegratedRuntime runtime = new IntegratedRuntime(
                     chatClient,
