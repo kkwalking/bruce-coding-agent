@@ -35,6 +35,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
     private static final TextColor.ANSI WARN = TextColor.ANSI.RED_BRIGHT;
     private static final TextColor.ANSI INFO = TextColor.ANSI.CYAN_BRIGHT;
     private static final TextColor.ANSI USER = TextColor.ANSI.GREEN_BRIGHT;
+    private static final int MAX_COMPLETION_ROWS = 6;
 
     private final Screen screen;
     private final Object lock = new Object();
@@ -453,14 +454,21 @@ public class LanternaBruceRenderer implements BruceRenderer {
         if (completions == null || completions.isEmpty() || indexStatusRow <= 1) {
             return;
         }
-        int visible = Math.min(6, completions.size());
-        int top = Math.max(0, indexStatusRow - visible - 1);
+        int requestedVisible = Math.min(MAX_COMPLETION_ROWS, completions.size());
+        int top = Math.max(0, indexStatusRow - requestedVisible - 1);
+        int visible = Math.min(requestedVisible, Math.max(0, indexStatusRow - top - 1));
+        if (visible <= 0) {
+            return;
+        }
+        int selectedIndex = clampCompletionIndex(selectedCompletion, completions.size());
+        int firstVisible = firstVisibleCompletionIndex(selectedIndex, completions.size(), visible);
         int width = Math.min(columns, 72);
         style(graphics, DIM, false);
         graphics.putString(0, top, fit("┌" + "─".repeat(Math.max(0, width - 2)) + "┐", columns));
         for (int i = 0; i < visible && top + i + 1 < indexStatusRow; i++) {
-            CompletionItem item = completions.get(i);
-            boolean selected = i == selectedCompletion;
+            int itemIndex = firstVisible + i;
+            CompletionItem item = completions.get(itemIndex);
+            boolean selected = itemIndex == selectedIndex;
             style(graphics, selected ? TextColor.ANSI.BLACK : INFO, selected);
             if (selected) {
                 graphics.setBackgroundColor(TextColor.ANSI.CYAN_BRIGHT);
@@ -469,6 +477,20 @@ public class LanternaBruceRenderer implements BruceRenderer {
             graphics.putString(0, top + i + 1, fit("│" + padRight(body, Math.max(0, width - 2)) + "│", columns));
             graphics.setBackgroundColor(TextColor.ANSI.DEFAULT);
         }
+    }
+
+    static int firstVisibleCompletionIndex(int selectedCompletion, int completionCount, int visibleRows) {
+        if (completionCount <= 0 || visibleRows <= 0) {
+            return 0;
+        }
+        int visible = Math.min(visibleRows, completionCount);
+        int selected = clampCompletionIndex(selectedCompletion, completionCount);
+        int maxFirstVisible = Math.max(0, completionCount - visible);
+        return Math.min(maxFirstVisible, Math.max(0, selected - visible + 1));
+    }
+
+    private static int clampCompletionIndex(int selectedCompletion, int completionCount) {
+        return Math.max(0, Math.min(selectedCompletion, Math.max(0, completionCount - 1)));
     }
 
     private void drawInput(

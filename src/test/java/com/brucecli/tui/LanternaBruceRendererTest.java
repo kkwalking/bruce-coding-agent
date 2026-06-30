@@ -178,6 +178,31 @@ class LanternaBruceRendererTest {
     }
 
     @Test
+    void completionsScrollToKeepSelectedItemVisible() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+            screen.screen().startScreen();
+            List<CompletionItem> completions = List.of(
+                completion("/cmd0"),
+                completion("/cmd1"),
+                completion("/cmd2"),
+                completion("/cmd3"),
+                completion("/cmd4"),
+                completion("/cmd5"),
+                completion("/cmd6"),
+                completion("/cmd7")
+            );
+
+            renderer.render("/", 1, completions, 6, 0, false);
+
+            String completionPanel = rowsText(screen.screen(), 13, 18);
+            assertFalse(completionPanel.contains("/cmd0"));
+            assertTrue(completionPanel.contains("/cmd1"));
+            assertTrue(completionPanel.contains("/cmd6"));
+        }
+    }
+
+    @Test
     void approvalDialogCompletesFromKeyInput() throws Exception {
         try (TestScreen screen = testScreen()) {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
@@ -211,6 +236,27 @@ class LanternaBruceRendererTest {
             0,
             "indexing"
         );
+    }
+
+    private static CompletionItem completion(String value) {
+        return new CompletionItem(value, value, "description", "test", true);
+    }
+
+    private static String rowsText(TerminalScreen screen, int startRow, int endRow) {
+        StringBuilder builder = new StringBuilder();
+        for (int row = startRow; row <= endRow; row++) {
+            builder.append(rowText(screen, row)).append('\n');
+        }
+        return builder.toString();
+    }
+
+    private static String rowText(TerminalScreen screen, int row) {
+        StringBuilder builder = new StringBuilder();
+        int columns = screen.getTerminalSize().getColumns();
+        for (int column = 0; column < columns; column++) {
+            builder.append(screen.getBackCharacter(column, row).getCharacter());
+        }
+        return builder.toString();
     }
 
     private static TestScreen testScreen() throws Exception {
