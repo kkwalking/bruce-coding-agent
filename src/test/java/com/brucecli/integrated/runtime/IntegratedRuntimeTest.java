@@ -6,6 +6,7 @@ import com.brucecli.approval.HitlHandler;
 import com.brucecli.event.BruceEvent;
 import com.brucecli.event.BruceEvents;
 import com.brucecli.runtime.ConcurrencyConfig;
+import com.brucecli.session.SessionManager;
 import com.brucecli.tool.CommandGuard;
 import com.brucecli.tool.GuardedHitlToolRegistry;
 import com.brucecli.integrated.cli.IntegratedCommandProcessor;
@@ -38,6 +39,7 @@ import java.util.Queue;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IntegratedRuntimeTest {
@@ -130,14 +132,42 @@ class IntegratedRuntimeTest {
     }
 
     @Test
-    void sessionHistorySurvivesRuntimeRestart() throws Exception {
+    void runtimeRestartStartsWithFreshSession() throws Exception {
         CapturingChatClient firstClient = new CapturingChatClient(text("saved answer"));
+        String savedSessionId;
         try (TestContext context = context(firstClient)) {
             assertEquals("saved answer", context.runtime.run("保存这一轮"));
+            savedSessionId = context.runtime.sessionContext().sessionId();
+        }
+
+        CapturingChatClient secondClient = new CapturingChatClient(text("fresh answer"));
+        try (TestContext context = context(secondClient)) {
+            assertNotEquals(savedSessionId, context.runtime.sessionContext().sessionId());
+            assertEquals(List.of(), context.runtime.sessionContext().messages());
+            assertEquals("fresh answer", context.runtime.run("继续"));
+
+            List<Message> freshTurn = secondClient.allMessages.get(0);
+            assertFalse(freshTurn.stream().anyMatch(message ->
+                "user".equals(message.role()) && "保存这一轮".equals(message.content())
+            ));
+            assertFalse(freshTurn.stream().anyMatch(message ->
+                "assistant".equals(message.role()) && "saved answer".equals(message.content())
+            ));
+        }
+    }
+
+    @Test
+    void explicitResumeRestoresSessionHistory() throws Exception {
+        CapturingChatClient firstClient = new CapturingChatClient(text("saved answer"));
+        String savedSessionId;
+        try (TestContext context = context(firstClient)) {
+            assertEquals("saved answer", context.runtime.run("保存这一轮"));
+            savedSessionId = context.runtime.sessionContext().sessionId();
         }
 
         CapturingChatClient secondClient = new CapturingChatClient(text("resumed answer"));
         try (TestContext context = context(secondClient)) {
+            assertTrue(context.commands.handle("/resume " + savedSessionId).output().contains("已恢复 session"));
             assertEquals("resumed answer", context.runtime.run("继续"));
 
             List<Message> resumedTurn = secondClient.allMessages.get(0);
@@ -622,12 +652,18 @@ class IntegratedRuntimeTest {
                 }
             }
             """);
+        SessionManager oldProjectSession = SessionManager.createNew(tempDir.resolve("home"), project, AgentMode.REACT);
+        oldProjectSession.appendMessage(Message.user("项目旧会话"));
+        String oldProjectSessionId = oldProjectSession.currentSessionId();
 
         try (TestContext context = context()) {
             context.runtime.setRagEnabled(true);
             context.runtime.index(project, new PrintStream(OutputStream.nullOutputStream()));
 
             assertEquals(project.toAbsolutePath().normalize(), context.runtime.workspaceRoot());
+            assertNotEquals(oldProjectSessionId, context.runtime.sessionContext().sessionId());
+            assertFalse(context.runtime.sessionContext().messages().stream()
+                .anyMatch(message -> "项目旧会话".equals(message.content())));
             assertTrue(context.runtime.status().ragIndexed());
             assertTrue(context.runtime.searchCode("LoginService login", 3).contains("LoginService"));
 

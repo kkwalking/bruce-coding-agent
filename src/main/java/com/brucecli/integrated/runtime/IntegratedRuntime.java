@@ -242,7 +242,7 @@ public class IntegratedRuntime implements AutoCloseable {
         this.mcpManager = startup.manager();
         this.mcpStartupError = startup.error();
         this.skillManager = new SkillManager(skillUserHome, this.workspaceRoot);
-        this.sessionManager = SessionManager.openLatestOrCreate(skillUserHome, this.workspaceRoot, mode);
+        this.sessionManager = SessionManager.createNew(skillUserHome, this.workspaceRoot, mode);
         this.eventBus.subscribe(new SessionEventRecorder(
             sessionManager,
             message -> this.progressOut.println(message)

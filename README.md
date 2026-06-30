@@ -113,7 +113,7 @@ $code-reviewer 审查当前代码变更
 ```
 
 默认状态：ReAct、Memory、Web、HITL 和 Parallel 开启，RAG 关闭。
-Session 默认按当前工作目录自动恢复最近 JSONL；`/tree <entryId>` 会把 active leaf 切到历史节点，下一条输入从该节点分叉。
+Session 启动默认创建新 JSONL；需要恢复历史时使用 `/resume <id|path>` 显式选择。`/tree <entryId>` 会把 active leaf 切到历史节点，下一条输入从该节点分叉。
 
 ## 多模态图片输入
 

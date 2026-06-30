@@ -48,19 +48,14 @@ public class SessionManager {
         this.sessionDirectory = sessionDirectory(this.homeDir, this.workspaceRoot);
     }
 
-    public static SessionManager openLatestOrCreate(
+    public static SessionManager createNew(
         Path homeDir,
         Path workspaceRoot,
         AgentMode defaultMode
     ) {
         SessionManager manager = new SessionManager(homeDir, workspaceRoot);
         try {
-            Optional<Path> latest = manager.latestSessionFile();
-            if (latest.isPresent()) {
-                manager.openFile(latest.get());
-            } else {
-                manager.createNew(defaultMode);
-            }
+            manager.createNew(defaultMode);
             return manager;
         } catch (IOException e) {
             throw new IllegalStateException("Session 初始化失败: " + e.getMessage(), e);
@@ -162,12 +157,7 @@ public class SessionManager {
     public synchronized void changeWorkspace(Path nextWorkspace, AgentMode fallbackMode) throws IOException {
         workspaceRoot = nextWorkspace.toAbsolutePath().normalize();
         sessionDirectory = sessionDirectory(homeDir, workspaceRoot);
-        Optional<Path> latest = latestSessionFile();
-        if (latest.isPresent()) {
-            openFile(latest.get());
-        } else {
-            createNew(fallbackMode);
-        }
+        createNew(fallbackMode);
     }
 
     public synchronized List<SessionSummary> listSessions(AgentMode fallbackMode) throws IOException {

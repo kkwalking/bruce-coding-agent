@@ -16,6 +16,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SessionManagerTest {
@@ -26,7 +27,7 @@ class SessionManagerTest {
     void createsHeaderAndReloadsMessages() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         assertTrue(Files.exists(manager.currentFile()));
         assertEquals(formatWorkspaceDirectory(workspace), manager.currentFile().getParent().getFileName().toString());
@@ -34,18 +35,34 @@ class SessionManagerTest {
 
         manager.appendMessage(Message.user("你好"));
         manager.appendMessage(Message.assistant("ok"));
+        String sessionId = manager.currentSessionId();
 
-        SessionManager reloaded = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
         assertEquals(List.of("你好", "ok"), reloaded.buildMessages().stream()
             .map(Message::content)
             .toList());
     }
 
     @Test
+    void createNewIgnoresLatestExistingSession() throws Exception {
+        Path home = tempDir.resolve("home");
+        Path workspace = tempDir.resolve("workspace");
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
+
+        manager.appendMessage(Message.user("旧会话"));
+        String oldSessionId = manager.currentSessionId();
+
+        SessionManager fresh = SessionManager.createNew(home, workspace, AgentMode.REACT);
+
+        assertNotEquals(oldSessionId, fresh.currentSessionId());
+        assertEquals(List.of(), fresh.buildMessages());
+    }
+
+    @Test
     void selectedLeafCreatesBranchOnNextAppendAndSurvivesReload() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         manager.appendMessage(Message.user("root"));
         String rootLeaf = manager.activeLeafId();
@@ -57,8 +74,9 @@ class SessionManagerTest {
             .map(Message::content)
             .toList());
         assertTrue(manager.renderTree(AgentMode.REACT).contains("* "));
+        String sessionId = manager.currentSessionId();
 
-        SessionManager reloaded = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
         assertEquals(List.of("root", "branch"), reloaded.buildMessages().stream()
             .map(Message::content)
             .toList());
@@ -68,7 +86,7 @@ class SessionManagerTest {
     void imageContentIsSanitizedBeforePersistence() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         manager.appendMessage(Message.user(List.of(
             ContentPart.text("截图"),
@@ -85,11 +103,12 @@ class SessionManagerTest {
     void modeChangeIsRestoredFromActivePath() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         manager.appendModeChange(AgentMode.PLAN);
+        String sessionId = manager.currentSessionId();
 
-        SessionManager reloaded = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
         assertEquals(AgentMode.PLAN, reloaded.context(AgentMode.REACT).mode());
     }
 
@@ -97,7 +116,7 @@ class SessionManagerTest {
     void selectingNodeBeforeModeChangeFallsBackToReact() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         manager.appendMessage(Message.user("root"));
         String rootLeaf = manager.activeLeafId();
@@ -112,14 +131,15 @@ class SessionManagerTest {
     void customEntriesAreReloadedButOnlyCustomMessagesEnterContext() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
 
         manager.appendMessage(Message.user("root"));
         manager.appendCustomEntry("artifact_index", Map.of("count", 2));
         manager.appendCustomMessage("retrieval", "检索上下文", false, Map.of("source", "test"));
         manager.appendSessionInfo("学习会话");
+        String sessionId = manager.currentSessionId();
 
-        SessionManager reloaded = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
 
         assertEquals(List.of("root", "检索上下文"), reloaded.buildMessages().stream()
             .map(Message::content)
@@ -134,7 +154,7 @@ class SessionManagerTest {
     void sessionEventRecorderPersistsOnlyDurableCompletedMessages() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
         SessionEventRecorder recorder = new SessionEventRecorder(manager, ignored -> {
         });
 
@@ -151,7 +171,7 @@ class SessionManagerTest {
     }
 
     @Test
-    void legacyBase64WorkspaceDirectoryIsStillReadable() throws Exception {
+    void legacyBase64WorkspaceDirectoryIsStillReadableByExplicitResume() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
         Path legacyDirectory = home.resolve(".brucecli")
@@ -163,7 +183,8 @@ class SessionManagerTest {
             {"type":"message","id":"e_legacy","timestamp":"2026-06-27T00:00:01Z","message":{"role":"user","content":"旧会话","reasoningContent":""}}
             """.formatted(workspace.toAbsolutePath().normalize()));
 
-        SessionManager manager = SessionManager.openLatestOrCreate(home, workspace, AgentMode.REACT);
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
+        manager.resume("legacy");
 
         assertEquals("legacy", manager.currentSessionId());
         assertEquals(List.of("旧会话"), manager.buildMessages().stream().map(Message::content).toList());
@@ -175,6 +196,12 @@ class SessionManagerTest {
     private static String formatWorkspaceDirectory(Path workspace) {
         String cwd = workspace.toAbsolutePath().normalize().toString();
         return "--" + cwd.replaceFirst("^[/\\\\]", "").replaceAll("[/\\\\:]", "-") + "--";
+    }
+
+    private static SessionManager createNewAndResume(Path home, Path workspace, String sessionId) throws Exception {
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
+        manager.resume(sessionId);
+        return manager;
     }
 
     private static String legacyWorkspaceDirectory(Path workspace) {
