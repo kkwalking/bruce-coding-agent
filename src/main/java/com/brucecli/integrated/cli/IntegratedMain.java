@@ -40,7 +40,8 @@ public class IntegratedMain {
             System.setOut(tuiStream);
             System.setErr(tuiStream);
             try {
-                LanternaHitlHandler hitlHandler = new LanternaHitlHandler(true, renderer);
+                // 默认关闭 hitl
+                LanternaHitlHandler hitlHandler = new LanternaHitlHandler(false, renderer);
                 Path workspaceRoot = Path.of("").toAbsolutePath().normalize();
                 Path userHome = Path.of(System.getProperty("user.home"));
                 BruceSettingsLoader settingsLoader = BruceSettingsLoader.defaults();
