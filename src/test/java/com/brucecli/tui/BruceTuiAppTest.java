@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BruceTuiAppTest {
@@ -72,6 +73,46 @@ class BruceTuiAppTest {
     }
 
     @Test
+    void resumeCommandReplaysSessionHistoryIntoOutputPanel() throws Exception {
+        String sessionId;
+        try (IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir)) {
+            assertEquals("ok", context.runtime().run("保存这一轮"));
+            sessionId = context.runtime().sessionContext().sessionId();
+        }
+
+        try (
+            IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir);
+            TestScreen testScreen = testScreen();
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(testScreen.screen());
+            BruceTuiApp app = new BruceTuiApp(
+                testScreen.screen(),
+                renderer,
+                context.runtime(),
+                context.chatClient(),
+                input -> {
+                    var result = context.commands().handle(input);
+                    return new TuiCommandResult(result.handled(), result.exit(), result.output());
+                },
+                tempDir
+            )
+        ) {
+            renderer.appendSystemMessage("旧面板内容");
+
+            type(app, "/resume " + sessionId);
+            app.handleKey(new KeyStroke(KeyType.Enter), List.of());
+            waitForMessage(renderer, "已恢复 session");
+
+            List<String> messages = renderer.messageTexts();
+            assertTrue(messages.contains("❯ 保存这一轮"));
+            assertTrue(messages.contains("ok"));
+            assertTrue(messages.stream().anyMatch(message -> message.contains("已恢复 session")));
+            assertFalse(messages.stream().anyMatch(message -> message.contains("旧面板内容")));
+            assertFalse(messages.stream().anyMatch(message -> message.contains("/resume ")));
+            assertEquals(0, app.scrollOffset());
+        }
+    }
+
+    @Test
     void enterOnModelCommandOpensSelectorThenSwitchesModel() throws Exception {
         try (
             IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir);
@@ -112,6 +153,20 @@ class BruceTuiAppTest {
                 assertEquals("glm-5.1", context.runtime().currentModel().model());
             }
         }
+    }
+
+    private static void waitForMessage(LanternaBruceRenderer renderer, String text) throws Exception {
+        long deadline = System.currentTimeMillis() + 2_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (renderer.messageTexts().stream().anyMatch(message -> message.contains(text))) {
+                return;
+            }
+            Thread.sleep(25);
+        }
+        assertTrue(
+            renderer.messageTexts().stream().anyMatch(message -> message.contains(text)),
+            () -> "Expected message containing: " + text + ", got: " + renderer.messageTexts()
+        );
     }
 
     private static MouseAction mouse(MouseActionType type) {

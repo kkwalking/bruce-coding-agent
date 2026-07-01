@@ -98,6 +98,18 @@ public class LanternaBruceRenderer implements BruceRenderer {
         append(MessageKind.ACTIVITY, "* " + nullToEmpty(message));
     }
 
+    public void clearMessages() {
+        if (closed) {
+            return;
+        }
+        synchronized (lock) {
+            messages.clear();
+            streamingAssistantIndex = -1;
+            streamingAssistant.setLength(0);
+        }
+        markDirty();
+    }
+
     @Override
     public void beginStreamingAssistantMessage() {
         if (closed) {

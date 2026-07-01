@@ -123,6 +123,21 @@ class LanternaBruceRendererTest {
     }
 
     @Test
+    void clearMessagesClearsVisibleOutputAndStreamingState() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.appendUserMessage("旧问题");
+            renderer.beginStreamingAssistantMessage();
+            renderer.appendStreamingAssistantDelta("旧回答");
+            renderer.clearMessages();
+            renderer.finishStreamingAssistantMessage("");
+
+            assertEquals(List.of(), renderer.messageTexts());
+        }
+    }
+
+    @Test
     void indexProgressRendersOutsideMessages() throws Exception {
         try (TestScreen screen = testScreen()) {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());

@@ -278,8 +278,38 @@ public class BruceTuiApp implements AutoCloseable {
             renderer.appendActivity(toolCompletedText(completed));
         } else if (event instanceof BruceEvents.Activity activity) {
             renderer.appendActivity(activity.message());
+        } else if (event instanceof BruceEvents.SessionChanged changed) {
+            replaySessionHistory(changed);
         } else if (event instanceof BruceEvents.IndexProgressUpdated progress) {
             renderer.updateIndexProgress(progress.progress());
+        }
+    }
+
+    private void replaySessionHistory(BruceEvents.SessionChanged changed) {
+        if (!"resume".equals(changed.reason()) || changed.context() == null) {
+            return;
+        }
+        renderer.clearMessages();
+        scrollOffset = 0;
+        List<Message> messages = changed.context().messages();
+        if (messages == null) {
+            return;
+        }
+        for (Message message : messages) {
+            renderSessionMessage(message);
+        }
+    }
+
+    private void renderSessionMessage(Message message) {
+        if (message == null) {
+            return;
+        }
+        if ("user".equals(message.role())) {
+            renderer.appendUserMessage(message.content());
+        } else if ("assistant".equals(message.role())
+            && message.content() != null
+            && !message.content().isBlank()) {
+            renderer.appendAssistantMessage(message.content());
         }
     }
 
