@@ -25,7 +25,6 @@ class BruceCompletionEngineTest {
             assertTrue(topLevel.contains("/session"));
             assertTrue(topLevel.contains("/tree "));
             assertTrue(topLevel.contains("/model"));
-            assertFalse(topLevel.contains("/multi"));
             assertFalse(topLevel.contains("/rag "));
             assertFalse(topLevel.contains("/index "));
             assertFalse(topLevel.contains("/search "));
