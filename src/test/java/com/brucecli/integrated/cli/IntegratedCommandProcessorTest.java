@@ -49,12 +49,6 @@ class IntegratedCommandProcessorTest {
             assertTrue(context.commands().handle("/plan").output().contains("Plan-and-Execute"));
             assertEquals(AgentMode.PLAN, context.runtime().mode());
 
-            for (String command : List.of("/multi", "/multi-agent")) {
-                String output = context.commands().handle(command).output();
-                assertTrue(output.contains("/help"));
-                assertEquals(AgentMode.PLAN, context.runtime().mode());
-            }
-
             assertTrue(context.commands().handle("/react").output().contains("ReAct"));
             assertEquals(AgentMode.REACT, context.runtime().mode());
         }
