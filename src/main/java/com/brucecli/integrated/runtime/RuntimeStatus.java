@@ -1,7 +1,5 @@
 package com.brucecli.integrated.runtime;
 
-import com.brucecli.memory.core.MemoryStatus;
-
 import java.time.Duration;
 import java.nio.file.Path;
 import java.util.List;
@@ -12,7 +10,6 @@ public record RuntimeStatus(
     String model,
     String provider,
     Path workspaceRoot,
-    MemoryStatus memoryStatus,
     boolean ragEnabled,
     boolean webEnabled,
     String webSearchProvider,
@@ -28,8 +25,7 @@ public record RuntimeStatus(
     private static final String MCP_TOOL_PREFIX = "mcp__";
     private static final Set<String> HIDDEN_DISPLAY_TOOLS = Set.of(
         "load_skill",
-        "read_skill_resource",
-        "save_long_term_memory"
+        "read_skill_resource"
     );
 
     public String toDisplayString() {
@@ -37,7 +33,6 @@ public record RuntimeStatus(
             当前模式: %s
             当前模型: %s [%s]
             工作目录: %s
-            Memory: (短期 %d 条 / %d tokens，长期 %d 条，最近注入 %d tokens)
             RAG: %s
             RAG 索引: %s
             Web: %s
@@ -51,10 +46,6 @@ public record RuntimeStatus(
                 model,
                 provider,
                 workspaceRoot,
-                memoryStatus.shortTermEntries(),
-                memoryStatus.shortTermTokens(),
-                memoryStatus.longTermEntries(),
-                memoryStatus.lastContextTokens(),
                 ragEnabled ? "开启" : "关闭",
                 ragIndexed ? "已建立" : "未建立",
                 webEnabled ? "开启 (provider=" + webSearchProvider + ")" : "关闭",

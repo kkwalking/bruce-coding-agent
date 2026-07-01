@@ -1,6 +1,6 @@
 # Bruce Coding Agent
 
-Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、记忆、检索、工具接入与会话能力。
+Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、检索、工具接入与会话能力。
 
 ## 核心特性
 
@@ -11,9 +11,8 @@ Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、
 - ReAct / Plan 双执行模式
 - Human-in-the-Loop 审批机制
 
-### Memory & Context
+### Session & Context
 
-- 短期记忆、长期记忆与上下文压缩
 - JSONL 会话存储，支持 `/resume <id|path>` 恢复历史
 - `/tree [entryId]` 查看会话树，并从历史节点分支续聊
 
@@ -114,10 +113,9 @@ java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 mvn clean package && java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
 ```
 
-程序以当前目录作为默认工具工作区。长期记忆和 RAG 索引固定保存在：
+程序以当前目录作为默认工具工作区。RAG 索引固定保存在：
 
 ```text
-~/.bruce/memory/long_term_memory.json
 ~/.bruce/rag/codebase.db
 ```
 
@@ -131,9 +129,6 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 | 模式 | `/plan` | 切换到 Plan-and-Execute 模式 | 先规划 DAG，再按任务节点执行。 |
 | 模型 | `/model` | 查看或选择模型 | 打开可用模型列表。 |
 | 模型 | `/model <provider/model>` | 切换模型 | 切换后写回 `defaultProvider` 和 `defaultModel`，作为下次启动默认模型。 |
-| Memory | `/memory status` | 查看 Memory 状态 | 展示短期记忆、长期记忆和压缩状态。 |
-| Memory | `/memory save <内容>` | 保存长期记忆 | 用于保存跨会话稳定事实或偏好。 |
-| Memory | `/memory search <查询>` | 检索长期记忆 | 手动查看与查询相关的长期记忆。 |
 | Web | `/web on\|off\|status` | 开关或查看联网能力 | Web 默认开启。 |
 | Web | `/web search <query>` | 手动联网搜索 | 使用 `~/.bruce/setting.json` 的 `webSearch` 配置。 |
 | Web | `/web fetch <url>` | 抓取网页正文 | 用于调试 WebFetch 提取结果。 |
@@ -147,13 +142,13 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 | Skill | `/skill reload` | 重新扫描 Skill | 重新加载用户级和项目级 Skill 目录。 |
 | HITL | `/hitl on\|off\|status` | 开关或查看人工审批 | HITL 默认开启。 |
 | Parallel | `/parallel on\|off\|status` | 开关或查看并行执行 | Parallel 默认开启，影响 ReAct 工具和 Plan DAG。 |
-| 通用 | `/status` | 查看统一运行状态 | 汇总模式、模型、Memory、RAG、Web、MCP、HITL、并行等状态。 |
+| 通用 | `/status` | 查看统一运行状态 | 汇总模式、模型、RAG、Web、MCP、HITL、并行等状态。 |
 | 通用 | `/session` | 查看当前 session | 展示 session id、文件路径、active leaf、模式和消息数。 |
 | 通用 | `/sessions` | 列出最近 session | 仅列出当前工作目录下的 session。 |
 | 通用 | `/new` | 新建 session | 开启一个新的 JSONL session。 |
 | 通用 | `/resume <id\|path>` | 恢复指定 session | 支持 session id 前缀或 JSONL 文件路径。 |
 | 通用 | `/tree [entryId]` | 查看或切换 session 树节点 | 不带参数查看树；带 `entryId` 切换 active leaf，下一条输入会从该节点分支。 |
-| 通用 | `/clear` | 开启新 session | 保留长期记忆和 RAG 索引。 |
+| 通用 | `/clear` | 开启新 session | 清空临时对话和 HITL 本会话放行记录。 |
 | 通用 | `/help` | 查看帮助 | 展示当前可用命令。 |
 | 通用 | `/exit` | 退出程序 | `exit` 和 `quit` 也可退出。 |
 
@@ -163,7 +158,7 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 | `@image:<path>` | 在 ReAct 输入中附加图片，支持相对路径、绝对路径和 `file://`。 | `分析截图 @image:./shot.png` |
 | `@clipboard` | 附加 macOS 剪贴板中的 PNG 图片。 | `看看剪贴板截图 @clipboard` |
 
-默认状态：ReAct、Memory、Web、HITL 和 Parallel 开启，RAG 关闭。
+默认状态：ReAct、Web、HITL 和 Parallel 开启，RAG 关闭。
 Session 启动默认创建新 JSONL；需要恢复历史时使用 `/resume <id|path>` 显式选择。`/tree <entryId>` 会把 active leaf 切到历史节点，下一条输入从该节点分叉。
 
 ## 多模态图片输入
@@ -266,7 +261,7 @@ RAG 默认使用本地 Ollama，也可以切换到 OpenAI-compatible / 智谱风
 }
 ```
 
-长期记忆和 RAG 数据库目录不可通过 `setting.json` 切换，统一固定为 `~/.bruce/memory/long_term_memory.json` 和 `~/.bruce/rag/codebase.db`。
+RAG 数据库目录不可通过 `setting.json` 切换，统一固定为 `~/.bruce/rag/codebase.db`。
 
 ## MCP 配置
 

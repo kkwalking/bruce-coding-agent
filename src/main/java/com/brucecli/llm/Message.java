@@ -55,7 +55,7 @@ public record Message(
     }
 
     /**
-     * 用户多模态输入。content 保留一份纯文本 fallback，方便 Memory、RAG 和日志继续工作。
+     * 用户多模态输入。content 保留一份纯文本 fallback，方便 RAG 和日志继续工作。
      */
     public static Message user(List<ContentPart> contentParts) {
         return new Message(

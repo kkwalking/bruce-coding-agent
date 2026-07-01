@@ -74,7 +74,6 @@ public final class BruceCompletionEngine {
                 completeSwitch(prefix, candidates);
             case "web" -> completeWeb(parts, prefix, input.endsWith(" "), candidates);
             case "mcp" -> completeMcp(parts, prefix, input.endsWith(" "), runtime, candidates);
-            case "memory" -> completeMemory(parts, prefix, input.endsWith(" "), candidates);
             case "skill" -> completeSkill(parts, prefix, input.endsWith(" "), runtime, candidates);
             default -> {
                 if (word.startsWith("@image:")) {
@@ -149,16 +148,6 @@ public final class BruceCompletionEngine {
                     candidates.add(new CompletionItem(name, name, "已配置 server", "MCP server", true));
                 }
             }
-        }
-    }
-
-    private static void completeMemory(String[] parts, String prefix, boolean inputEndsWithSpace, List<CompletionItem> candidates) {
-        if (parts.length <= 1 || (parts.length == 2 && !inputEndsWithSpace)) {
-            addMatching(candidates, "Memory", prefix, List.of(
-                option("status", "查看状态"),
-                option("save ", "保存长期记忆"),
-                option("search ", "搜索长期记忆")
-            ));
         }
     }
 

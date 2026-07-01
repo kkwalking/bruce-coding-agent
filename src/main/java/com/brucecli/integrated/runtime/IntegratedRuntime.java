@@ -20,11 +20,6 @@ import com.brucecli.llm.ModelSelectionService;
 import com.brucecli.llm.PreparedUserInput;
 import com.brucecli.instructions.AgentInstructionsLoadResult;
 import com.brucecli.instructions.AgentInstructionsLoader;
-import com.brucecli.memory.core.MemoryContext;
-import com.brucecli.memory.core.MemoryManager;
-import com.brucecli.memory.core.MemoryStatus;
-import com.brucecli.memory.model.MemoryEntry;
-import com.brucecli.memory.tool.MemoryToolRegistrar;
 import com.brucecli.mcp.config.McpConfig;
 import com.brucecli.mcp.runtime.McpServerManager;
 import com.brucecli.plan.agent.PlanAndExecuteAgent;
@@ -99,7 +94,6 @@ public class IntegratedRuntime implements AutoCloseable {
         """;
 
     private final ChatClient chatClient;
-    private final MemoryManager memoryManager;
     private final EmbeddingClient embeddingClient;
     private final Path ragDbFile;
     private final HitlHandler hitlHandler;
@@ -133,7 +127,6 @@ public class IntegratedRuntime implements AutoCloseable {
     public IntegratedRuntime(
         ChatClient chatClient,
         Path workspaceRoot,
-        MemoryManager memoryManager,
         EmbeddingClient embeddingClient,
         Path ragDbFile,
         HitlHandler hitlHandler
@@ -141,7 +134,6 @@ public class IntegratedRuntime implements AutoCloseable {
         this(
             chatClient,
             workspaceRoot,
-            memoryManager,
             embeddingClient,
             ragDbFile,
             hitlHandler,
@@ -153,7 +145,6 @@ public class IntegratedRuntime implements AutoCloseable {
     public IntegratedRuntime(
         ChatClient chatClient,
         Path workspaceRoot,
-        MemoryManager memoryManager,
         EmbeddingClient embeddingClient,
         Path ragDbFile,
         HitlHandler hitlHandler,
@@ -162,7 +153,6 @@ public class IntegratedRuntime implements AutoCloseable {
         this(
             chatClient,
             workspaceRoot,
-            memoryManager,
             embeddingClient,
             ragDbFile,
             hitlHandler,
@@ -174,7 +164,6 @@ public class IntegratedRuntime implements AutoCloseable {
     public IntegratedRuntime(
         ChatClient chatClient,
         Path workspaceRoot,
-        MemoryManager memoryManager,
         EmbeddingClient embeddingClient,
         Path ragDbFile,
         HitlHandler hitlHandler,
@@ -184,7 +173,6 @@ public class IntegratedRuntime implements AutoCloseable {
         this(
             chatClient,
             workspaceRoot,
-            memoryManager,
             embeddingClient,
             ragDbFile,
             hitlHandler,
@@ -198,7 +186,6 @@ public class IntegratedRuntime implements AutoCloseable {
     public IntegratedRuntime(
         ChatClient chatClient,
         Path workspaceRoot,
-        MemoryManager memoryManager,
         EmbeddingClient embeddingClient,
         Path ragDbFile,
         HitlHandler hitlHandler,
@@ -209,7 +196,6 @@ public class IntegratedRuntime implements AutoCloseable {
         this(
             chatClient,
             workspaceRoot,
-            memoryManager,
             embeddingClient,
             ragDbFile,
             hitlHandler,
@@ -223,7 +209,6 @@ public class IntegratedRuntime implements AutoCloseable {
     public IntegratedRuntime(
         ChatClient chatClient,
         Path workspaceRoot,
-        MemoryManager memoryManager,
         EmbeddingClient embeddingClient,
         Path ragDbFile,
         HitlHandler hitlHandler,
@@ -235,7 +220,6 @@ public class IntegratedRuntime implements AutoCloseable {
         this(
             chatClient,
             workspaceRoot,
-            memoryManager,
             embeddingClient,
             ragDbFile,
             hitlHandler,
@@ -250,7 +234,6 @@ public class IntegratedRuntime implements AutoCloseable {
     public IntegratedRuntime(
         ChatClient chatClient,
         Path workspaceRoot,
-        MemoryManager memoryManager,
         EmbeddingClient embeddingClient,
         Path ragDbFile,
         HitlHandler hitlHandler,
@@ -262,7 +245,6 @@ public class IntegratedRuntime implements AutoCloseable {
     ) {
         this.chatClient = chatClient;
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
-        this.memoryManager = memoryManager;
         this.embeddingClient = embeddingClient;
         this.ragDbFile = ragDbFile.toAbsolutePath().normalize();
         this.hitlHandler = hitlHandler;
@@ -519,18 +501,6 @@ public class IntegratedRuntime implements AutoCloseable {
         rebuildComponents();
     }
 
-    public void saveMemory(String content) throws Exception {
-        memoryManager.saveFact(content);
-    }
-
-    public List<MemoryEntry> searchMemory(String query, int limit) {
-        return memoryManager.searchLongTerm(query, limit);
-    }
-
-    public MemoryStatus memoryStatus() {
-        return memoryManager.status();
-    }
-
     public List<ModelOption> modelOptions() {
         ModelSelectionService service = modelSelectionService();
         if (service != null) {
@@ -568,7 +538,6 @@ public class IntegratedRuntime implements AutoCloseable {
             model.model().isBlank() ? "auto" : model.model(),
             model.provider().isBlank() ? "unknown" : model.provider(),
             workspaceRoot,
-            memoryManager.status(),
             ragEnabled,
             webEnabled,
             webProviderName(),
@@ -717,11 +686,8 @@ public class IntegratedRuntime implements AutoCloseable {
 
     private String runPlan(String input, String taskSystemContext, String runId) throws Exception {
         emit(new BruceEvents.MessageCompleted(runId, Message.user(input), true));
-        String context = buildMemoryContext(input);
-        context = joinContext(context, buildRagContext(input));
-        memoryManager.rememberUserMessage(input);
+        String context = buildRagContext(input);
         String result = planAgent.run(input, context, taskSystemContext).toMarkdown();
-        memoryManager.rememberAssistantMessage(result);
         emit(new BruceEvents.MessageCompleted(runId, Message.assistant(result), true));
         return result;
     }
@@ -737,7 +703,6 @@ public class IntegratedRuntime implements AutoCloseable {
         planningToolRegistry = ToolRegistry.empty(workspaceRoot);
         SkillToolRegistrar.register(toolRegistry, skillManager);
         SkillToolRegistrar.register(planningToolRegistry, skillManager);
-        MemoryToolRegistrar.register(toolRegistry, memoryManager);
 
         String additionalInstructions = buildAdditionalInstructions();
         if (ragEnabled) {
@@ -758,7 +723,6 @@ public class IntegratedRuntime implements AutoCloseable {
         reactAgent = new Agent(
             chatClient,
             toolRegistry,
-            memoryManager,
             additionalInstructions,
             toolCallBatchExecutor(),
             eventBus
@@ -779,7 +743,7 @@ public class IntegratedRuntime implements AutoCloseable {
     }
 
     private String buildAdditionalInstructions() {
-        String instructions = joinContext(SKILL_AGENT_INSTRUCTIONS, MemoryToolRegistrar.AGENT_INSTRUCTIONS);
+        String instructions = SKILL_AGENT_INSTRUCTIONS;
         if (ragEnabled) {
             instructions = joinContext(instructions, RagToolRegistrar.AGENT_INSTRUCTIONS);
         }
@@ -819,13 +783,7 @@ public class IntegratedRuntime implements AutoCloseable {
         if (reactAgent != null) {
             reactAgent.clearHistory();
         }
-        memoryManager.clearShortTerm();
         hitlHandler.clearApprovedAll();
-    }
-
-    private String buildMemoryContext(String input) throws Exception {
-        MemoryContext context = memoryManager.buildContext(input);
-        return context.prompt();
     }
 
     private String buildRagContext(String input) throws Exception {

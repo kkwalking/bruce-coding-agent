@@ -11,7 +11,7 @@ import java.util.Set;
  * RAG 查询分词器。
  *
  * <p>同时照顾中文自然语言和 Java 标识符：jieba 负责中文，ASCII 扫描负责
- * Agent、MemoryManager、run 这类代码关键词。</p>
+ * Agent、LoginService、run 这类代码关键词。</p>
  */
 public class RagQueryTokenizer {
     private static final Set<String> STOP_WORDS = Set.of(

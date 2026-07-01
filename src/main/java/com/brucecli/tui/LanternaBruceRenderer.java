@@ -590,8 +590,7 @@ public class LanternaBruceRenderer implements BruceRenderer {
             + " · mode " + status.mode()
             + " · " + compactPath(status.workspace())
             + " · mcp " + status.mcpSummary()
-            + " · skills " + status.skillCount()
-            + " · memory " + status.memoryTokens() + "t";
+            + " · skills " + status.skillCount();
         graphics.putString(Math.min(columns - 1, permission.length()), row, fit(details, Math.max(0, columns - permission.length())));
     }
 

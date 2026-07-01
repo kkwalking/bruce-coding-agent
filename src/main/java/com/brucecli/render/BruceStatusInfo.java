@@ -19,7 +19,6 @@ public record BruceStatusInfo(
     boolean webEnabled,
     String mcpSummary,
     int skillCount,
-    int memoryTokens,
     long elapsedMillis
 ) {
     public static BruceStatusInfo from(IntegratedRuntime runtime, ChatClient chatClient, String phase) {
@@ -37,7 +36,6 @@ public record BruceStatusInfo(
             status.webEnabled(),
             status.mcpSummary(),
             status.skillCount(),
-            status.memoryStatus().shortTermTokens(),
             0
         );
     }
@@ -56,7 +54,6 @@ public record BruceStatusInfo(
             webEnabled,
             mcpSummary,
             skillCount,
-            memoryTokens,
             elapsedMillis
         );
     }
@@ -75,7 +72,6 @@ public record BruceStatusInfo(
             webEnabled,
             mcpSummary,
             skillCount,
-            memoryTokens,
             Math.max(0, nextElapsedMillis)
         );
     }

@@ -16,10 +16,6 @@ import com.brucecli.llm.FunctionCall;
 import com.brucecli.llm.Message;
 import com.brucecli.llm.ToolDefinition;
 import com.brucecli.llm.ToolCall;
-import com.brucecli.memory.core.ConversationMemory;
-import com.brucecli.memory.core.LongTermMemory;
-import com.brucecli.memory.core.MemoryManager;
-import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.rag.embedding.EmbeddingClient;
 import com.brucecli.rag.model.IndexProgress;
 import com.brucecli.web.search.WebSearchConfig;
@@ -56,7 +52,7 @@ class IntegratedRuntimeTest {
             assertTrue(status.hitlEnabled());
             assertTrue(status.parallelEnabled());
             assertEquals(4, status.maxParallelism());
-            assertTrue(status.toolNames().contains("save_long_term_memory"));
+            assertFalse(status.toolNames().stream().anyMatch(name -> name.contains("long") && name.contains("term")));
             assertTrue(status.toolNames().contains("web_search"));
             assertTrue(status.toolNames().contains("web_fetch"));
             assertTrue(status.toolNames().contains("load_skill"));
@@ -347,29 +343,6 @@ class IntegratedRuntimeTest {
             assertFalse(context.runtime.status().toolNames().contains("search_code"));
             context.runtime.run("普通问题");
             assertFalse(context.chatClient.lastMessages.get(0).content().contains("你额外拥有 search_code"));
-        }
-    }
-
-    @Test
-    void memoryIsFixedAndCommandsDoNotToggleIt() throws Exception {
-        try (TestContext context = context()) {
-            context.runtime.saveMemory("项目默认使用 JDK 17");
-
-            assertTrue(context.commands.handle("/memory off").output().contains("memory 只支持"));
-            assertTrue(context.commands.handle("/memory on").output().contains("memory 只支持"));
-            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
-            assertTrue(context.commands.handle("/memory status").output().contains("# Memory Status"));
-
-            context.commands.handle("/web off");
-            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            context.commands.handle("/parallel off");
-            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            context.runtime.setRagEnabled(true);
-            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            context.runtime.setRagEnabled(false);
-            assertTrue(context.runtime.status().toolNames().contains("save_long_term_memory"));
-            assertFalse(context.runtime.searchMemory("JDK 17", 5).isEmpty());
         }
     }
 
@@ -692,15 +665,9 @@ class IntegratedRuntimeTest {
     }
 
     private TestContext context(CapturingChatClient chatClient) throws Exception {
-        MemoryManager memoryManager = new MemoryManager(
-            new ConversationMemory(1_000),
-            new LongTermMemory(tempDir.resolve("memory")),
-            entries -> MemoryEntry.summary("测试摘要", Map.of("source_count", String.valueOf(entries.size())))
-        );
         IntegratedRuntime runtime = new IntegratedRuntime(
             chatClient,
             tempDir,
-            memoryManager,
             new FakeEmbeddingClient(),
             tempDir.resolve("rag/codebase.db"),
             new EnabledHitlHandler(),

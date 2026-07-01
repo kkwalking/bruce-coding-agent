@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>bruce-coding-agent</name>
-    <description>集成 ReAct、Plan DAG、Memory、RAG、HITL 与并行执行的 Bruce Coding Agent</description>
+    <description>集成 ReAct、Plan DAG、RAG、HITL 与并行执行的 Bruce Coding Agent</description>
 
     <properties>
         <maven.compiler.release>17</maven.compiler.release>

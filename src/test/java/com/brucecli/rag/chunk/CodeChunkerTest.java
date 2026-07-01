@@ -53,7 +53,7 @@ public class CodeChunkerTest {
             import java.util.List;
 
             public class Agent extends BaseAgent implements Runnable {
-                private final Memory memory = new Memory();
+                private final State state = new State();
 
                 @Override
                 public void run() {
@@ -62,7 +62,7 @@ public class CodeChunkerTest {
                 }
 
                 private void plan() {
-                    memory.save("step");
+                    state.save("step");
                 }
             }
             """);

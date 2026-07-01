@@ -63,7 +63,7 @@ class BruceSettingsLoaderTest {
 	                "apiKey": "embedding-key"
 	              },
 	              "storage": {
-	                "memoryDir": "~/custom-memory",
+	                "legacyDir": "~/custom-cache",
 	                "ragDir": "/tmp/bruce-rag"
 	              },
 	              "variables": {
@@ -106,7 +106,7 @@ class BruceSettingsLoaderTest {
         loader.save(settings);
         String saved = Files.readString(file);
         assertFalse(saved.contains("\"storage\""));
-        assertFalse(saved.contains("memoryDir"));
+        assertFalse(saved.contains("legacyDir"));
         assertFalse(saved.contains("ragDir"));
     }
 
@@ -132,8 +132,8 @@ class BruceSettingsLoaderTest {
         try {
             System.setProperty("user.home", home.toString());
 
-            assertEquals(home.resolve(".bruce/memory").toAbsolutePath().normalize(),
-                BruceSettingsLoader.resolveUserPath("~/.bruce/memory"));
+            assertEquals(home.resolve(".bruce/cache").toAbsolutePath().normalize(),
+                BruceSettingsLoader.resolveUserPath("~/.bruce/cache"));
             assertEquals(home.toAbsolutePath().normalize(), BruceSettingsLoader.resolveUserPath("~"));
             assertEquals(tempDir.resolve("plain").toAbsolutePath().normalize(),
                 BruceSettingsLoader.resolveUserPath(tempDir.resolve("plain").toString()));

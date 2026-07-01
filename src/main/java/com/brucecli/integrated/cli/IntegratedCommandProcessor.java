@@ -3,7 +3,6 @@ package com.brucecli.integrated.cli;
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ModelOption;
-import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.rag.model.IndexProgressListener;
 import com.brucecli.skill.SkillDefinition;
 import com.brucecli.skill.SkillLoadResult;
@@ -160,7 +159,6 @@ public class IntegratedCommandProcessor {
             Parallel.class,
             Web.class,
             Mcp.class,
-            Memory.class,
             Hitl.class,
             Skill.class
         }
@@ -233,11 +231,6 @@ public class IntegratedCommandProcessor {
                   /mcp disable <name>    禁用某个 server
                   /mcp enable <name>     启用某个 server
 
-                Memory:
-                  /memory status
-                  /memory save <内容>
-                  /memory search <查询>
-
                 HITL（默认开启）:
                   /hitl on|off|status
 
@@ -261,7 +254,7 @@ public class IntegratedCommandProcessor {
                   /new                   新建 session
                   /resume <id|path>      恢复指定 session
                   /tree [entryId]        查看或切换当前 session 树节点
-                  /clear                 开启新 session，保留长期记忆和 RAG 索引
+                  /clear                 开启新 session，并清空临时对话和 HITL 本会话放行记录
                   /help
                   /exit
                 """);
@@ -306,7 +299,7 @@ public class IntegratedCommandProcessor {
         @Override
         public void run() {
             root.runtime.clearSession();
-            root.handled("已开启新 session，并清空短期记忆、临时对话和 HITL 本会话放行记录。");
+            root.handled("已开启新 session，并清空临时对话和 HITL 本会话放行记录。");
         }
     }
 
@@ -614,57 +607,6 @@ public class IntegratedCommandProcessor {
         public void run() {
             mcp.root.runtime.enableMcpServer(name);
             mcp.root.handled("MCP server 已启用: " + name);
-        }
-    }
-
-    @Command(name = "memory", subcommands = {MemorySave.class, MemorySearch.class})
-    private static class Memory implements Runnable {
-        @ParentCommand SlashRoot root;
-        @Spec CommandSpec spec;
-        @Parameters(index = "0", arity = "0..1", description = "status")
-        private String action = "status";
-
-        @Override
-        public void run() {
-            if (!"status".equals(normalized(action))) {
-                throw new CommandLine.ParameterException(spec.commandLine(), "memory 只支持 status、save 或 search");
-            }
-            root.handled(root.runtime.memoryStatus().toMarkdown());
-        }
-    }
-
-    @Command(name = "save")
-    private static class MemorySave implements Callable<Void> {
-        @ParentCommand Memory memory;
-        @Parameters(index = "0..*", arity = "1..*")
-        private String[] content;
-
-        @Override
-        public Void call() throws Exception {
-            String text = join(content);
-            memory.root.runtime.saveMemory(text);
-            memory.root.handled("长期记忆已保存: " + text);
-            return null;
-        }
-    }
-
-    @Command(name = "search")
-    private static class MemorySearch implements Runnable {
-        @ParentCommand Memory memory;
-        @Parameters(index = "0..*", arity = "1..*")
-        private String[] query;
-
-        @Override
-        public void run() {
-            List<MemoryEntry> entries = memory.root.runtime.searchMemory(join(query), 5);
-            if (entries.isEmpty()) {
-                memory.root.handled("没有找到相关长期记忆。");
-                return;
-            }
-            memory.root.handled(entries.stream()
-                .map(entry -> "- " + entry.toPromptLine())
-                .reduce((left, right) -> left + "\n" + right)
-                .orElse(""));
         }
     }
 

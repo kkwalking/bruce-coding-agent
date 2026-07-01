@@ -5,10 +5,6 @@ import com.brucecli.config.BruceSettingsLoader;
 import com.brucecli.integrated.runtime.IntegratedRuntime;
 import com.brucecli.llm.ChatClient;
 import com.brucecli.llm.ChatClientFactory;
-import com.brucecli.memory.compress.LlmContextCompressor;
-import com.brucecli.memory.core.ConversationMemory;
-import com.brucecli.memory.core.LongTermMemory;
-import com.brucecli.memory.core.MemoryManager;
 import com.brucecli.mcp.config.McpConfig;
 import com.brucecli.mcp.config.McpConfigLoader;
 import com.brucecli.rag.embedding.EmbeddingClient;
@@ -58,11 +54,6 @@ public class IntegratedMain {
                     System.exit(1);
                     return;
                 }
-                MemoryManager memoryManager = new MemoryManager(
-                    new ConversationMemory(8_000),
-                    new LongTermMemory(),
-                    new LlmContextCompressor(chatClient)
-                );
                 EmbeddingClient embeddingClient = EmbeddingClient.fromSettings(settings.getEmbedding());
                 WebSearchConfig webSearchConfig = WebSearchConfig.fromSettings(settings.getWebSearch());
                 Path ragDbFile = VectorStore.defaultDbPath();
@@ -70,7 +61,6 @@ public class IntegratedMain {
                 try (IntegratedRuntime runtime = new IntegratedRuntime(
                     chatClient,
                     workspaceRoot,
-                    memoryManager,
                     embeddingClient,
                     ragDbFile,
                     hitlHandler,

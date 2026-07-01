@@ -29,7 +29,6 @@ final class BruceSlashCommandHints {
         }
         hints.add(hint("/web ", "Web 开关和搜索"));
         hints.add(hint("/mcp ", "MCP server 管理"));
-        hints.add(hint("/memory ", "长期记忆"));
         hints.add(hint("/hitl ", "HITL 开关和状态"));
         hints.add(hint("/parallel ", "并行执行开关和状态"));
         hints.add(hint("/skill ", "Skill 管理"));

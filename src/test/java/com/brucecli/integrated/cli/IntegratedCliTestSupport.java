@@ -11,10 +11,6 @@ import com.brucecli.llm.Message;
 import com.brucecli.llm.ModelOption;
 import com.brucecli.llm.ModelSelectionService;
 import com.brucecli.llm.ToolDefinition;
-import com.brucecli.memory.core.ConversationMemory;
-import com.brucecli.memory.core.LongTermMemory;
-import com.brucecli.memory.core.MemoryManager;
-import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.mcp.config.McpConfig;
 import com.brucecli.mcp.config.McpConfigLoader;
 import com.brucecli.rag.embedding.EmbeddingClient;
@@ -27,7 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 
 public final class IntegratedCliTestSupport {
     private IntegratedCliTestSupport() {
@@ -45,15 +40,9 @@ public final class IntegratedCliTestSupport {
         Path testHome = tempDir.resolve("home");
         BruceSettingsLoader settingsLoader = new BruceSettingsLoader(testHome.resolve(".bruce/setting.json"));
         McpConfig mcpConfig = new McpConfigLoader(tempDir, settingsLoader).load();
-        MemoryManager memoryManager = new MemoryManager(
-            new ConversationMemory(1_000),
-            new LongTermMemory(tempDir.resolve("memory")),
-            entries -> MemoryEntry.summary("测试摘要", Map.of("source_count", String.valueOf(entries.size())))
-        );
         IntegratedRuntime runtime = new IntegratedRuntime(
             chatClient,
             tempDir,
-            memoryManager,
             new FakeEmbeddingClient(),
             tempDir.resolve("rag/codebase.db"),
             new EnabledHitlHandler(),

@@ -1,6 +1,4 @@
 package com.brucecli.integrated.runtime;
-
-import com.brucecli.memory.core.MemoryStatus;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -18,7 +16,6 @@ class RuntimeStatusTest {
             "model",
             "provider",
             Path.of("workspace").toAbsolutePath(),
-            emptyMemoryStatus(),
             false,
             true,
             "test",
@@ -33,7 +30,6 @@ class RuntimeStatusTest {
                 "read_file",
                 "load_skill",
                 "read_skill_resource",
-                "save_long_term_memory",
                 "mcp__filesystem__read_file",
                 "web_search"
             )
@@ -48,25 +44,5 @@ class RuntimeStatusTest {
             .orElseThrow();
 
         assertEquals("Tools: read_file, web_search", toolsLine.strip());
-    }
-
-    private static MemoryStatus emptyMemoryStatus() {
-        return new MemoryStatus(
-            0,
-            0,
-            0,
-            0.0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            false
-        );
     }
 }
