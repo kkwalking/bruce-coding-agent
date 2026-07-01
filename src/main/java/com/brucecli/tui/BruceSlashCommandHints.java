@@ -20,7 +20,6 @@ final class BruceSlashCommandHints {
         List<SlashCommandHint> hints = new ArrayList<>();
         hints.add(hint("/react", "切换到 ReAct 模式"));
         hints.add(hint("/plan", "切换到 Plan-and-Execute 模式"));
-        hints.add(hint("/multi", "切换到 Multi-Agent 模式"));
         hints.add(hint("/model", "选择模型"));
         if (includeRag) {
             hints.add(hint("/rag ", "RAG 开关和状态"));

@@ -8,7 +8,6 @@ import com.brucecli.event.BruceEvents;
 import com.brucecli.tool.ToolCallExecutor;
 import com.brucecli.approval.HitlHandler;
 import com.brucecli.runtime.ConcurrencyConfig;
-import com.brucecli.runtime.DaemonThreadFactory;
 import com.brucecli.plan.executor.ParallelPlanExecutor;
 import com.brucecli.tool.ParallelToolCallExecutor;
 import com.brucecli.tool.CommandGuard;
@@ -28,7 +27,6 @@ import com.brucecli.memory.model.MemoryEntry;
 import com.brucecli.memory.tool.MemoryToolRegistrar;
 import com.brucecli.mcp.config.McpConfig;
 import com.brucecli.mcp.runtime.McpServerManager;
-import com.brucecli.agent.multi.AgentOrchestrator;
 import com.brucecli.plan.agent.PlanAndExecuteAgent;
 import com.brucecli.plan.executor.ExecutionPlanExecutor;
 import com.brucecli.plan.executor.PlanExecutor;
@@ -74,13 +72,12 @@ import java.util.List;
  * 各 Agent 能力的统一装配层。
  */
 public class IntegratedRuntime implements AutoCloseable {
-    private static final int MAX_REVIEW_RETRIES = 2;
     private static final String PARALLEL_AGENT_INSTRUCTIONS = """
         你正在使用并行执行能力。
         当多个工具调用彼此独立时，可以在同一轮返回多个 tool_calls；程序会并行执行，并按原始顺序写回结果。
         适合并行：读取多个不同文件、列出多个目录、运行多个互不依赖的观察命令。
         不适合并行：先读再写、先创建再写入、多个任务写同一文件、后一步依赖前一步输出。
-        如果存在先后依赖，请拆成多轮工具调用，或在 Plan/Multi-Agent 中显式声明依赖。
+        如果存在先后依赖，请拆成多轮工具调用，或切换到 Plan 模式显式声明依赖。
         """;
     private static final String PARALLEL_PLANNER_INSTRUCTIONS = """
         并行规划提示：
@@ -129,7 +126,6 @@ public class IntegratedRuntime implements AutoCloseable {
     private ToolRegistry planningToolRegistry;
     private Agent reactAgent;
     private PlanAndExecuteAgent planAgent;
-    private AgentOrchestrator multiAgent;
     private ParallelToolCallExecutor parallelToolCallExecutor;
     private SearchProvider webSearchProvider;
     private WebFetcher webFetcher;
@@ -339,7 +335,6 @@ public class IntegratedRuntime implements AutoCloseable {
             String result = switch (mode) {
                 case REACT -> runReact(preparedInput, taskSystemContext, runId);
                 case PLAN -> runPlan(preparedInput.text(), taskSystemContext, runId);
-                case MULTI -> runMulti(preparedInput.text(), taskSystemContext, runId);
             };
             emit(new BruceEvents.RunCompleted(runId, result));
             return result;
@@ -710,7 +705,6 @@ public class IntegratedRuntime implements AutoCloseable {
 
     @Override
     public void close() {
-        closeMultiAgent();
         closeToolCallExecutor();
         if (mcpManager != null) {
             mcpManager.close();
@@ -732,15 +726,7 @@ public class IntegratedRuntime implements AutoCloseable {
         return result;
     }
 
-    private String runMulti(String input, String taskSystemContext, String runId) throws Exception {
-        emit(new BruceEvents.MessageCompleted(runId, Message.user(input), true));
-        String result = multiAgent.execute(input, buildRagContext(input), taskSystemContext, progressOut).toMarkdown();
-        emit(new BruceEvents.MessageCompleted(runId, Message.assistant(result), true));
-        return result;
-    }
-
     private void rebuildComponents() {
-        closeMultiAgent();
         closeToolCallExecutor();
         toolRegistry = new GuardedHitlToolRegistry(
             hitlHandler,
@@ -790,19 +776,6 @@ public class IntegratedRuntime implements AutoCloseable {
             ),
             executor
         );
-        int workerCount = parallelEnabled ? concurrencyConfig.maxParallelism() : 1;
-        multiAgent = new AgentOrchestrator(
-            chatClient,
-            toolRegistry,
-            planningToolRegistry,
-            memoryManager,
-            workerCount,
-            MAX_REVIEW_RETRIES,
-            additionalInstructions,
-            concurrencyConfig.batchTimeout(),
-            new DaemonThreadFactory("bruce-coding-agent-worker"),
-            () -> joinContext(skillManager.catalogPrompt(), skillManager.activeInstructions())
-        );
     }
 
     private String buildAdditionalInstructions() {
@@ -847,9 +820,6 @@ public class IntegratedRuntime implements AutoCloseable {
             reactAgent.clearHistory();
         }
         memoryManager.clearShortTerm();
-        if (multiAgent != null) {
-            multiAgent.clearHistories();
-        }
         hitlHandler.clearApprovedAll();
     }
 
@@ -956,13 +926,6 @@ public class IntegratedRuntime implements AutoCloseable {
             return first;
         }
         return first + "\n\n" + second;
-    }
-
-    private void closeMultiAgent() {
-        if (multiAgent != null) {
-            multiAgent.close();
-            multiAgent = null;
-        }
     }
 
     private void closeToolCallExecutor() {

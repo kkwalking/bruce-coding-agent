@@ -3,6 +3,7 @@ package com.brucecli.session;
 import com.brucecli.integrated.runtime.AgentMode;
 import com.brucecli.llm.Message;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.BufferedWriter;
@@ -32,7 +33,8 @@ public class SessionManager {
         .withZone(ZoneOffset.UTC);
 
     private final ObjectMapper mapper = new ObjectMapper()
-        .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+        .configure(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL, true);
     private final Path homeDir;
     private Path workspaceRoot;
     private Path sessionDirectory;

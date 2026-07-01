@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 
@@ -112,6 +113,23 @@ class SessionManagerTest {
 
         SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
         assertEquals(AgentMode.PLAN, reloaded.context(AgentMode.REACT).mode());
+    }
+
+    @Test
+    void unknownHistoricalModeFallsBackToReact() throws Exception {
+        Path home = tempDir.resolve("home");
+        Path workspace = tempDir.resolve("workspace");
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
+        String sessionId = manager.currentSessionId();
+        Files.writeString(
+            manager.currentFile(),
+            "{\"type\":\"mode_change\",\"id\":\"legacy_multi\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"mode\":\"MULTI\"}\n",
+            StandardOpenOption.APPEND
+        );
+
+        SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
+
+        assertEquals(AgentMode.REACT, reloaded.context(AgentMode.REACT).mode());
     }
 
     @Test

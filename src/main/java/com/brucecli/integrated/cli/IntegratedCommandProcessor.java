@@ -156,7 +156,6 @@ public class IntegratedCommandProcessor {
             Tree.class,
             React.class,
             Plan.class,
-            Multi.class,
             Model.class,
             Parallel.class,
             Web.class,
@@ -204,7 +203,6 @@ public class IntegratedCommandProcessor {
                 模式:
                   /react                 切换到 ReAct 模式
                   /plan                  切换到 Plan-and-Execute 模式
-                  /multi                 切换到 Multi-Agent 模式
 
                 模型:
                   /model                 查看或选择模型
@@ -395,17 +393,6 @@ public class IntegratedCommandProcessor {
         }
     }
 
-    @Command(name = "multi", aliases = {"multi-agent"})
-    private static class Multi implements Runnable {
-        @ParentCommand SlashRoot root;
-
-        @Override
-        public void run() {
-            root.runtime.switchMode(AgentMode.MULTI);
-            root.handled("已切换到 Multi-Agent 模式。");
-        }
-    }
-
     @Command(name = "model")
     private static class Model implements Runnable {
         @ParentCommand SlashRoot root;
@@ -434,7 +421,7 @@ public class IntegratedCommandProcessor {
             switch (normalized(action)) {
                 case "on" -> {
                     root.runtime.setParallelEnabled(true);
-                    root.handled("Parallel 已开启；ReAct 工具、Plan DAG 和 Multi-Agent Worker 将使用批次并行。");
+                    root.handled("Parallel 已开启；ReAct 工具和 Plan DAG 将使用批次并行。");
                 }
                 case "off" -> {
                     root.runtime.setParallelEnabled(false);

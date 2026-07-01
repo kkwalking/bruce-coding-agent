@@ -65,8 +65,6 @@ class IntegratedRuntimeTest {
 
             context.commands.handle("/plan");
             assertEquals(AgentMode.PLAN, context.runtime.mode());
-            context.commands.handle("/multi");
-            assertEquals(AgentMode.MULTI, context.runtime.mode());
             context.commands.handle("/react");
             assertEquals(AgentMode.REACT, context.runtime.mode());
 
@@ -560,45 +558,6 @@ class IntegratedRuntimeTest {
             );
             assertTrue(chatClient.allMessages.get(2).stream().anyMatch(message ->
                 "tool".equals(message.role()) && message.content().contains("plan evidence")
-            ));
-        }
-    }
-
-    @Test
-    void multiAgentPlannerIsRestrictedWhileWorkerReceivesSkillContextAndFullTools() throws Exception {
-        writeSkill("multi-helper", "辅助多 Agent", "MULTI_SKILL_INSTRUCTION");
-        CapturingChatClient chatClient = new CapturingChatClient(
-            new ChatResponse("", List.of(toolCall(
-                "load_multi",
-                "load_skill",
-                "{\"name\":\"multi-helper\"}"
-            ))),
-            text("""
-                {
-                  "goal": "分析",
-                  "steps": [
-                    {"id": "step_1", "description": "完成分析", "type": "GENERAL", "dependencies": []}
-                  ]
-                }
-                """),
-            text("worker done"),
-            text("""
-                {"approved":true,"summary":"ok","issues":[],"suggestions":[]}
-                """)
-        );
-        try (TestContext context = context(chatClient)) {
-            context.commands.handle("/multi");
-            String result = context.runtime.run("执行多 Agent 分析");
-
-            assertTrue(result.contains("所有步骤已通过"));
-            assertEquals(
-                List.of("load_skill", "read_skill_resource"),
-                chatClient.allTools.get(0).stream().map(ToolDefinition::name).toList()
-            );
-            assertTrue(chatClient.allTools.get(2).stream().map(ToolDefinition::name).toList()
-                .contains("write_file"));
-            assertTrue(chatClient.allMessages.get(2).stream().anyMatch(message ->
-                message.content() != null && message.content().contains("MULTI_SKILL_INSTRUCTION")
             ));
         }
     }

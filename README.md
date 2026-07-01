@@ -8,7 +8,7 @@ Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、
 
 - ReAct 推理与 Tool Calling
 - Plan-and-Execute：基于 DAG 的任务规划与执行
-- ReAct / Plan / Multi-Agent 多执行模式
+- ReAct / Plan 双执行模式
 - Human-in-the-Loop 审批机制
 
 ### Memory & Context
@@ -129,7 +129,6 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 | --- | --- | --- | --- |
 | 模式 | `/react` | 切换到 ReAct 模式 | 适合边思考边调用工具的普通任务。 |
 | 模式 | `/plan` | 切换到 Plan-and-Execute 模式 | 先规划 DAG，再按任务节点执行。 |
-| 模式 | `/multi` | 切换到 Multi-Agent 模式 | 使用 Planner、Worker、Reviewer 协作完成任务。 |
 | 模型 | `/model` | 查看或选择模型 | 打开可用模型列表。 |
 | 模型 | `/model <provider/model>` | 切换模型 | 切换后写回 `defaultProvider` 和 `defaultModel`，作为下次启动默认模型。 |
 | Memory | `/memory status` | 查看 Memory 状态 | 展示短期记忆、长期记忆和压缩状态。 |
@@ -147,7 +146,7 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 | Skill | `/skill show <name>` | 查看 Skill 详情 | 展示 Skill 元数据和完整指令。 |
 | Skill | `/skill reload` | 重新扫描 Skill | 重新加载用户级和项目级 Skill 目录。 |
 | HITL | `/hitl on\|off\|status` | 开关或查看人工审批 | HITL 默认开启。 |
-| Parallel | `/parallel on\|off\|status` | 开关或查看并行执行 | Parallel 默认开启，影响 ReAct 工具、Plan DAG 和 Multi-Agent Worker。 |
+| Parallel | `/parallel on\|off\|status` | 开关或查看并行执行 | Parallel 默认开启，影响 ReAct 工具和 Plan DAG。 |
 | 通用 | `/status` | 查看统一运行状态 | 汇总模式、模型、Memory、RAG、Web、MCP、HITL、并行等状态。 |
 | 通用 | `/session` | 查看当前 session | 展示 session id、文件路径、active leaf、模式和消息数。 |
 | 通用 | `/sessions` | 列出最近 session | 仅列出当前工作目录下的 session。 |

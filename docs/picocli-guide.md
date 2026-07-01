@@ -300,7 +300,7 @@ Bruce Coding Agent 用一个 `name = ""` 的根命令容纳所有子命令：
         Help.class, Exit.class, Status.class, Clear.class,
         Session.class, Sessions.class, NewSession.class,
         Resume.class, Tree.class, React.class, Plan.class,
-        Multi.class, Parallel.class, Rag.class, Index.class,
+        Parallel.class, Rag.class, Index.class,
         Search.class, Graph.class, Web.class, Mcp.class,
         Memory.class, Hitl.class, Skill.class
     }
@@ -354,8 +354,6 @@ McpRestart.run():
 ```java
 @Command(name = "exit", aliases = {"quit"})
 // 用户可输入 /exit 或 /quit
-
-@Command(name = "multi", aliases = {"multi-agent"})
 ```
 
 ### 大小写不敏感枚举
