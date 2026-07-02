@@ -1,6 +1,7 @@
 package com.brucecli.integrated.runtime;
 
 import com.brucecli.agent.Agent;
+import com.brucecli.config.BruceSettings;
 import com.brucecli.event.BruceEvent;
 import com.brucecli.event.BruceEventBus;
 import com.brucecli.event.BruceEventListener;
@@ -52,9 +53,13 @@ import com.brucecli.skill.SkillLoadResult;
 import com.brucecli.skill.SkillManager;
 import com.brucecli.skill.SkillToolRegistrar;
 import com.brucecli.session.SessionContext;
+import com.brucecli.session.SessionEntry;
 import com.brucecli.session.SessionEventRecorder;
 import com.brucecli.session.SessionManager;
 import com.brucecli.session.SessionSummary;
+import com.brucecli.session.compaction.CompactionPreparation;
+import com.brucecli.session.compaction.CompactionResult;
+import com.brucecli.session.compaction.SessionCompactor;
 import com.brucecli.tool.ToolRegistry;
 
 import java.io.IOException;
@@ -100,6 +105,7 @@ public class IntegratedRuntime implements AutoCloseable {
     private final ConcurrencyConfig concurrencyConfig;
     private final WebSearchConfig webSearchConfig;
     private final PrintStream progressOut;
+    private final BruceSettings.CompactionSettings compactionSettings;
     private final BruceEventBus eventBus = new BruceEventBus();
     private final McpServerManager mcpManager;
     private final SkillManager skillManager;
@@ -243,6 +249,34 @@ public class IntegratedRuntime implements AutoCloseable {
         PrintStream progressOut,
         McpConfig mcpConfig
     ) {
+        this(
+            chatClient,
+            workspaceRoot,
+            embeddingClient,
+            ragDbFile,
+            hitlHandler,
+            webSearchConfig,
+            concurrencyConfig,
+            skillUserHome,
+            progressOut,
+            mcpConfig,
+            null
+        );
+    }
+
+    public IntegratedRuntime(
+        ChatClient chatClient,
+        Path workspaceRoot,
+        EmbeddingClient embeddingClient,
+        Path ragDbFile,
+        HitlHandler hitlHandler,
+        WebSearchConfig webSearchConfig,
+        ConcurrencyConfig concurrencyConfig,
+        Path skillUserHome,
+        PrintStream progressOut,
+        McpConfig mcpConfig,
+        BruceSettings.CompactionSettings compactionSettings
+    ) {
         this.chatClient = chatClient;
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.embeddingClient = embeddingClient;
@@ -251,6 +285,9 @@ public class IntegratedRuntime implements AutoCloseable {
         this.concurrencyConfig = concurrencyConfig;
         this.webSearchConfig = webSearchConfig == null ? WebSearchConfig.empty() : webSearchConfig;
         this.progressOut = progressOut == null ? System.out : progressOut;
+        this.compactionSettings = compactionSettings == null
+            ? new BruceSettings.CompactionSettings()
+            : compactionSettings;
         this.userHome = skillUserHome == null
             ? Path.of(System.getProperty("user.home")).toAbsolutePath().normalize()
             : skillUserHome.toAbsolutePath().normalize();
@@ -319,6 +356,7 @@ public class IntegratedRuntime implements AutoCloseable {
                 case PLAN -> runPlan(preparedInput.text(), taskSystemContext, runId);
             };
             emit(new BruceEvents.RunCompleted(runId, result));
+            maybeAutoCompact();
             return result;
         } catch (Exception exception) {
             emit(new BruceEvents.RunFailed(runId, exception.getMessage()));
@@ -635,6 +673,24 @@ public class IntegratedRuntime implements AutoCloseable {
         return sessionManager.renderTree(AgentMode.REACT);
     }
 
+    public String compactSession(String customInstructions) {
+        try {
+            CompactionResult result = runCompaction(customInstructions, "manual");
+            int estimatedAfter = SessionCompactor.estimateMessagesTokens(sessionManager.buildMessages());
+            return """
+                已压缩 session。
+                Tokens: %d -> ~%d
+                First kept entry: %s
+                """.formatted(
+                    result.tokensBefore(),
+                    estimatedAfter,
+                    result.firstKeptEntryId()
+                ).strip();
+        } catch (IOException e) {
+            throw new IllegalStateException("Session 压缩失败: " + e.getMessage(), e);
+        }
+    }
+
     public void selectSessionLeaf(String reference) {
         try {
             sessionManager.selectLeaf(reference);
@@ -689,6 +745,47 @@ public class IntegratedRuntime implements AutoCloseable {
         String context = buildRagContext(input);
         String result = planAgent.run(input, context, taskSystemContext).toMarkdown();
         emit(new BruceEvents.MessageCompleted(runId, Message.assistant(result), true));
+        return result;
+    }
+
+    private void maybeAutoCompact() {
+        if (!compactionSettings.isEnabled()) {
+            return;
+        }
+        int contextWindow = chatClient.maxContextWindow();
+        if (contextWindow <= 0) {
+            return;
+        }
+        int threshold = Math.max(1, contextWindow - compactionSettings.getReserveTokens());
+        int contextTokens = SessionCompactor.estimateContextTokens(sessionManager.buildMessages()).tokens();
+        if (contextTokens <= threshold) {
+            return;
+        }
+        try {
+            runCompaction("", "auto");
+        } catch (Exception exception) {
+            emit(new BruceEvents.Activity(null, "自动压缩失败: " + exception.getMessage()));
+        }
+    }
+
+    private CompactionResult runCompaction(String customInstructions, String reason) throws IOException {
+        List<SessionEntry> pathEntries = sessionManager.activeEntries();
+        if (!pathEntries.isEmpty() && SessionEntry.TYPE_COMPACTION.equals(pathEntries.get(pathEntries.size() - 1).type())) {
+            throw new IllegalStateException("当前 session 最新节点已经是 compaction。");
+        }
+        CompactionPreparation preparation = SessionCompactor.prepare(pathEntries, compactionSettings)
+            .orElseThrow(() -> new IllegalStateException("当前 session 没有足够的历史可压缩。"));
+        emit(new BruceEvents.Activity(null, "开始压缩 session..."));
+        CompactionResult result = SessionCompactor.compact(preparation, chatClient, customInstructions);
+        sessionManager.appendCompaction(
+            result.summary(),
+            result.firstKeptEntryId(),
+            result.tokensBefore(),
+            result.details()
+        );
+        restoreReactSessionHistory();
+        emit(new BruceEvents.Activity(null, "Session 已压缩 (" + reason + ")。"));
+        emit(new BruceEvents.SessionChanged("compact", sessionContext()));
         return result;
     }
 

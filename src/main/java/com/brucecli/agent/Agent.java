@@ -150,7 +150,7 @@ public class Agent {
                 try {
                     MessageHistoryPruner.retainLatestImageMessage(conversationHistory);
                     // 每次都发送完整历史和完整工具清单，让模型可以基于之前的观察继续行动。
-                    emit(new BruceEvents.MessageStarted(runId, "assistant"));
+                    emit(new BruceEvents.MessageStarted(runId, Message.ROLE_ASSISTANT));
                     response = llmClient.chat(
                         conversationHistory,
                         toolRegistry.getToolDefinitions(),
@@ -170,11 +170,7 @@ public class Agent {
 
                 if (response.hasToolCalls()) {
                     // 这条 assistant 消息非常重要：它记录“模型刚才请求了哪些工具”。
-                    appendDurableMessage(runId, Message.assistant(
-                        response.reasoningContent(),
-                        response.content(),
-                        response.toolCalls()
-                    ));
+                    appendDurableMessage(runId, Message.assistant(response));
                     for (ToolCall toolCall : response.toolCalls()) {
                         emit(new BruceEvents.ToolCallStarted(runId, toolCall));
                     }
@@ -203,7 +199,7 @@ public class Agent {
                 }
 
                 // 没有工具调用，说明模型已经给出最终回答。
-                appendDurableMessage(runId, Message.assistant(response.reasoningContent(), response.content()));
+                appendDurableMessage(runId, Message.assistant(response));
                 return response.content();
             }
 
@@ -231,7 +227,7 @@ public class Agent {
             return;
         }
         for (Message message : messages) {
-            if (message == null || "system".equals(message.role())) {
+            if (message == null || Message.ROLE_SYSTEM.equals(message.role())) {
                 continue;
             }
             conversationHistory.add(message);
@@ -249,12 +245,12 @@ public class Agent {
         return new ChatClient.StreamListener() {
             @Override
             public void onReasoningDelta(String delta) {
-                emit(new BruceEvents.MessageDelta(runId, "assistant", "reasoning", delta));
+                emit(new BruceEvents.MessageDelta(runId, Message.ROLE_ASSISTANT, "reasoning", delta));
             }
 
             @Override
             public void onContentDelta(String delta) {
-                emit(new BruceEvents.MessageDelta(runId, "assistant", "content", delta));
+                emit(new BruceEvents.MessageDelta(runId, Message.ROLE_ASSISTANT, "content", delta));
             }
         };
     }
@@ -303,7 +299,7 @@ public class Agent {
         }
         for (int i = 0; i < conversationHistory.size(); i++) {
             Message message = conversationHistory.get(i);
-            if ("tool".equals(message.role()) && skillCallIds.contains(message.toolCallId())) {
+            if (Message.ROLE_TOOL.equals(message.role()) && skillCallIds.contains(message.toolCallId())) {
                 conversationHistory.set(
                     i,
                     Message.tool(message.toolCallId(), "[Skill 内容仅对原任务有效，已从历史中移除]")

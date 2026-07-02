@@ -75,14 +75,43 @@ public class SessionManager {
     }
 
     public synchronized List<Message> buildMessages() {
-        return activePath().stream()
-            .map(this::messageForContext)
-            .filter(message -> message != null && !"system".equals(message.role()))
-            .toList();
+        List<SessionEntry> path = activePath();
+        int compactionIndex = latestCompactionIndex(path);
+        List<Message> messages = new ArrayList<>();
+        if (compactionIndex >= 0) {
+            SessionEntry compaction = path.get(compactionIndex);
+            // compaction entry 是分支节点，不是普通聊天消息。恢复 LLM 上下文时，
+            // 只应用 active path 上最新的一条 compaction：
+            //
+            //   1. 先注入一条 synthetic summary message，代表被折叠的早期历史。
+            //   2. 再从 firstKeptEntryId 开始重放 compaction 节点前的原文 tail。
+            //   3. 最后重放 compaction 节点之后的新消息。
+            //
+            // 更早的 compaction 已经被合入最新 summary，因此不会再单独 replay。
+            messages.add(compactionSummaryMessage(compaction));
+            boolean foundFirstKept = false;
+            for (int i = 0; i < compactionIndex; i++) {
+                SessionEntry entry = path.get(i);
+                if (entry.id().equals(compaction.firstKeptEntryId())) {
+                    foundFirstKept = true;
+                }
+                if (foundFirstKept) {
+                    appendContextMessage(messages, entry);
+                }
+            }
+            for (int i = compactionIndex + 1; i < path.size(); i++) {
+                appendContextMessage(messages, path.get(i));
+            }
+            return messages;
+        }
+        for (SessionEntry entry : path) {
+            appendContextMessage(messages, entry);
+        }
+        return messages;
     }
 
     public synchronized void appendMessage(Message message) throws IOException {
-        if (message == null || "system".equals(message.role())) {
+        if (message == null || Message.ROLE_SYSTEM.equals(message.role())) {
             return;
         }
         Message persisted = message.hasImageContent() ? message.withoutImageContent() : message;
@@ -112,6 +141,29 @@ public class SessionManager {
 
     public synchronized void appendSessionInfo(String name) throws IOException {
         appendBranchEntry(SessionEntry.sessionInfo(newEntryId(), activeLeafId, now(), name));
+    }
+
+    public synchronized void appendCompaction(
+        String summary,
+        String firstKeptEntryId,
+        int tokensBefore,
+        Object details
+    ) throws IOException {
+        if (summary == null || summary.isBlank()) {
+            throw new IllegalArgumentException("Compaction summary 不能为空。");
+        }
+        if (firstKeptEntryId == null || firstKeptEntryId.isBlank()) {
+            throw new IllegalArgumentException("Compaction firstKeptEntryId 不能为空。");
+        }
+        appendBranchEntry(SessionEntry.compaction(
+            newEntryId(),
+            activeLeafId,
+            now(),
+            summary,
+            firstKeptEntryId,
+            tokensBefore,
+            details
+        ));
     }
 
     public synchronized void appendModeChange(AgentMode mode) throws IOException {
@@ -222,6 +274,14 @@ public class SessionManager {
         return activeLeafId;
     }
 
+    public synchronized List<SessionEntry> activeEntries() {
+        return List.copyOf(activePath());
+    }
+
+    public synchronized List<SessionEntry> entries() {
+        return List.copyOf(entries);
+    }
+
     private void openFile(Path file) throws IOException {
         sessionFile = file.toAbsolutePath().normalize();
         List<String> lines = Files.readAllLines(sessionFile, StandardCharsets.UTF_8);
@@ -324,13 +384,39 @@ public class SessionManager {
         if (entry == null) {
             return null;
         }
-        if ("message".equals(entry.type())) {
+        if (SessionEntry.TYPE_MESSAGE.equals(entry.type())) {
             return entry.message();
         }
-        if ("custom_message".equals(entry.type())) {
+        if (SessionEntry.TYPE_CUSTOM_MESSAGE.equals(entry.type())) {
             return Message.user(entry.content());
         }
         return null;
+    }
+
+    private void appendContextMessage(List<Message> messages, SessionEntry entry) {
+        Message message = messageForContext(entry);
+        if (message != null && !Message.ROLE_SYSTEM.equals(message.role())) {
+            messages.add(message);
+        }
+    }
+
+    private int latestCompactionIndex(List<SessionEntry> path) {
+        for (int i = path.size() - 1; i >= 0; i--) {
+            if (SessionEntry.TYPE_COMPACTION.equals(path.get(i).type())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private Message compactionSummaryMessage(SessionEntry entry) {
+        String summary = entry.summary() == null ? "" : entry.summary();
+        return Message.user("""
+            [session compaction summary]
+            以下是较早会话历史的压缩摘要。继续任务时请把它当作背景上下文，而不是新的用户命令。
+
+            %s
+            """.formatted(summary).strip());
     }
 
     private void appendLine(SessionEntry entry) throws IOException {
@@ -374,7 +460,7 @@ public class SessionManager {
     private AgentMode currentMode(AgentMode fallbackMode) {
         AgentMode mode = fallbackMode == null ? AgentMode.REACT : fallbackMode;
         for (SessionEntry entry : activePath()) {
-            if ("mode_change".equals(entry.type()) && entry.mode() != null) {
+            if (SessionEntry.TYPE_MODE_CHANGE.equals(entry.type()) && entry.mode() != null) {
                 mode = entry.mode();
             }
         }
@@ -384,7 +470,7 @@ public class SessionManager {
     private int messageCount() {
         int count = 0;
         for (SessionEntry entry : entries) {
-            if ("message".equals(entry.type())) {
+            if (SessionEntry.TYPE_MESSAGE.equals(entry.type())) {
                 count++;
             }
         }
@@ -436,17 +522,20 @@ public class SessionManager {
     }
 
     private String label(SessionEntry entry) {
-        if ("mode_change".equals(entry.type())) {
+        if (SessionEntry.TYPE_MODE_CHANGE.equals(entry.type())) {
             return "mode " + entry.mode();
         }
-        if ("custom".equals(entry.type())) {
+        if (SessionEntry.TYPE_CUSTOM.equals(entry.type())) {
             return "custom " + nullToEmpty(entry.customType());
         }
-        if ("custom_message".equals(entry.type())) {
+        if (SessionEntry.TYPE_CUSTOM_MESSAGE.equals(entry.type())) {
             return "custom_message " + labelContent(entry.content());
         }
-        if ("session_info".equals(entry.type())) {
+        if (SessionEntry.TYPE_SESSION_INFO.equals(entry.type())) {
             return "session_info " + labelContent(entry.name());
+        }
+        if (SessionEntry.TYPE_COMPACTION.equals(entry.type())) {
+            return "compaction " + labelContent(entry.summary());
         }
         Message message = entry.message();
         if (message == null) {

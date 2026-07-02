@@ -38,6 +38,7 @@ final class BruceSlashCommandHints {
         hints.add(hint("/new", "新建 session"));
         hints.add(hint("/resume ", "恢复 session"));
         hints.add(hint("/tree ", "查看或切换 session 树"));
+        hints.add(hint("/compact ", "压缩较早会话历史"));
         hints.add(hint("/clear", "开启新 session"));
         hints.add(hint("/help", "查看帮助"));
         hints.add(hint("/exit", "退出 bruce"));

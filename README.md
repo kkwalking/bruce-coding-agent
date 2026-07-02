@@ -15,6 +15,7 @@ Bruce Coding Agent 是一个智能编码助手，完整集成 Agent 运行时、
 
 - JSONL 会话存储，支持 `/resume <id|path>` 恢复历史
 - `/tree [entryId]` 查看会话树，并从历史节点分支续聊
+- 会话压缩：`/compact` 手动压缩，超出上下文阈值后自动压缩较早历史
 
 ### Tools & Retrieval
 
@@ -91,6 +92,11 @@ java -jar target/bruce-coding-agent-1.0.0-SNAPSHOT-all.jar
   "mcp": {
     "servers": {}
   },
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000
+  },
   "variables": {
     "demoToken": "replace_me"
   }
@@ -148,6 +154,7 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 | 通用 | `/new` | 新建 session | 开启一个新的 JSONL session。 |
 | 通用 | `/resume <id\|path>` | 恢复指定 session | 支持 session id 前缀或 JSONL 文件路径。 |
 | 通用 | `/tree [entryId]` | 查看或切换 session 树节点 | 不带参数查看树；带 `entryId` 切换 active leaf，下一条输入会从该节点分支。 |
+| 通用 | `/compact [instructions]` | 压缩较早 session 历史 | 追加 compaction 摘要节点，保留最近上下文；可选指令用于聚焦摘要。 |
 | 通用 | `/clear` | 开启新 session | 清空临时对话和 HITL 本会话放行记录。 |
 | 通用 | `/help` | 查看帮助 | 展示当前可用命令。 |
 | 通用 | `/exit` | 退出程序 | `exit` 和 `quit` 也可退出。 |
@@ -160,6 +167,8 @@ RAG 相关 slash 入口目前暂时屏蔽，底层索引与检索实现保留。
 
 默认状态：ReAct、Web、HITL 和 Parallel 开启，RAG 关闭。
 Session 启动默认创建新 JSONL；需要恢复历史时使用 `/resume <id|path>` 显式选择。`/tree <entryId>` 会把 active leaf 切到历史节点，下一条输入从该节点分叉。
+
+会话压缩不会删除 JSONL 原始历史，而是在当前 active leaf 后追加 `compaction` 节点。恢复上下文时，模型看到的是压缩摘要加最近保留的消息。自动压缩只在当前模型提供 context window 且估算上下文超过 `contextWindow - reserveTokens` 时触发；`enabled=false` 会关闭自动压缩，手动 `/compact` 仍可使用。
 
 ## 多模态图片输入
 

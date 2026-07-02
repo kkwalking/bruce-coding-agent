@@ -286,7 +286,7 @@ public class BruceTuiApp implements AutoCloseable {
     }
 
     private void replaySessionHistory(BruceEvents.SessionChanged changed) {
-        if (!"resume".equals(changed.reason()) || changed.context() == null) {
+        if (!("resume".equals(changed.reason()) || "compact".equals(changed.reason())) || changed.context() == null) {
             return;
         }
         renderer.clearMessages();

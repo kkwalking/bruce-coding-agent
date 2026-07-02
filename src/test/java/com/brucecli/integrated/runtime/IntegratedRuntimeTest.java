@@ -3,6 +3,7 @@ package com.brucecli.integrated.runtime;
 import com.brucecli.approval.ApprovalRequest;
 import com.brucecli.approval.ApprovalResult;
 import com.brucecli.approval.HitlHandler;
+import com.brucecli.config.BruceSettings;
 import com.brucecli.event.BruceEvent;
 import com.brucecli.event.BruceEvents;
 import com.brucecli.runtime.ConcurrencyConfig;
@@ -212,6 +213,68 @@ class IntegratedRuntimeTest {
             ));
             assertTrue(resumedTurn.stream().anyMatch(message ->
                 "assistant".equals(message.role()) && "saved answer".equals(message.content())
+            ));
+        }
+    }
+
+    @Test
+    void manualCompactWritesCompactionAndNextRunUsesSummaryContext() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(
+            text("first answer"),
+            text("second answer"),
+            text("manual summary"),
+            text("after compact")
+        );
+        try (TestContext context = context(chatClient, compactionSettings(true, 12))) {
+            assertEquals("first answer", context.runtime.run("第一轮"));
+            assertEquals("second answer", context.runtime.run("第二轮"));
+
+            String output = context.commands.handle("/compact 只关注实现细节").output();
+
+            assertTrue(output.contains("已压缩 session"));
+            assertTrue(chatClient.allMessages.get(2).get(1).content().contains("只关注实现细节"));
+            assertTrue(context.runtime.sessionContext().messages().get(0).content().contains("manual summary"));
+
+            assertEquals("after compact", context.runtime.run("继续"));
+            List<Message> nextMessages = chatClient.allMessages.get(3);
+            assertTrue(nextMessages.stream().anyMatch(message ->
+                message.content() != null && message.content().contains("manual summary")
+            ));
+            assertFalse(nextMessages.stream().anyMatch(message ->
+                "第一轮".equals(message.content())
+            ));
+        }
+    }
+
+    @Test
+    void autoCompactsAfterRunWhenContextThresholdIsExceeded() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(10,
+            textWithUsage("large answer", 20, 1),
+            text("auto summary")
+        );
+        try (TestContext context = context(chatClient, compactionSettings(true, 1))) {
+            assertEquals("large answer", context.runtime.run("第一轮"));
+
+            assertEquals(2, chatClient.allMessages.size());
+            assertTrue(context.runtime.sessionContext().messages().get(0).content().contains("auto summary"));
+
+            String repeat = context.commands.handle("/compact").output();
+            assertTrue(repeat.contains("最新节点已经是 compaction"));
+            assertEquals(2, chatClient.allMessages.size());
+        }
+    }
+
+    @Test
+    void disabledAutoCompactionDoesNotRunAfterThreshold() throws Exception {
+        CapturingChatClient chatClient = new CapturingChatClient(10,
+            textWithUsage("large answer", 20, 1)
+        );
+        try (TestContext context = context(chatClient, compactionSettings(false, 1))) {
+            assertEquals("large answer", context.runtime.run("第一轮"));
+
+            assertEquals(1, chatClient.allMessages.size());
+            assertFalse(context.runtime.sessionContext().messages().stream().anyMatch(message ->
+                message.content() != null && message.content().contains("session compaction summary")
             ));
         }
     }
@@ -665,6 +728,13 @@ class IntegratedRuntimeTest {
     }
 
     private TestContext context(CapturingChatClient chatClient) throws Exception {
+        return context(chatClient, null);
+    }
+
+    private TestContext context(
+        CapturingChatClient chatClient,
+        BruceSettings.CompactionSettings compactionSettings
+    ) throws Exception {
         IntegratedRuntime runtime = new IntegratedRuntime(
             chatClient,
             tempDir,
@@ -673,7 +743,10 @@ class IntegratedRuntimeTest {
             new EnabledHitlHandler(),
             WebSearchConfig.empty(),
             new ConcurrencyConfig(4, Duration.ofSeconds(2), 2_000),
-            tempDir.resolve("home")
+            tempDir.resolve("home"),
+            new PrintStream(OutputStream.nullOutputStream()),
+            null,
+            compactionSettings
         );
         return new TestContext(
             runtime,
@@ -703,6 +776,18 @@ class IntegratedRuntimeTest {
 
     private static ChatResponse text(String content) {
         return new ChatResponse(content, List.of());
+    }
+
+    private static ChatResponse textWithUsage(String content, int inputTokens, int outputTokens) {
+        return new ChatResponse("assistant", content, "", List.of(), inputTokens, outputTokens, 0);
+    }
+
+    private static BruceSettings.CompactionSettings compactionSettings(boolean enabled, int keepRecentTokens) {
+        BruceSettings.CompactionSettings settings = new BruceSettings.CompactionSettings();
+        settings.setEnabled(enabled);
+        settings.setKeepRecentTokens(keepRecentTokens);
+        settings.setReserveTokens(5);
+        return settings;
     }
 
     private static ChatResponse planResponse() {
@@ -739,11 +824,17 @@ class IntegratedRuntimeTest {
 
     private static class CapturingChatClient implements ChatClient {
         private final Queue<ChatResponse> responses = new ArrayDeque<>();
+        private final int maxContextWindow;
         private List<Message> lastMessages = List.of();
         private final List<List<Message>> allMessages = new java.util.ArrayList<>();
         private final List<List<ToolDefinition>> allTools = new java.util.ArrayList<>();
 
         CapturingChatClient(ChatResponse... responses) {
+            this(0, responses);
+        }
+
+        CapturingChatClient(int maxContextWindow, ChatResponse... responses) {
+            this.maxContextWindow = maxContextWindow;
             this.responses.addAll(List.of(responses));
         }
 
@@ -754,6 +845,11 @@ class IntegratedRuntimeTest {
             allTools.add(List.copyOf(tools));
             ChatResponse response = responses.poll();
             return response == null ? text("ok") : response;
+        }
+
+        @Override
+        public int maxContextWindow() {
+            return maxContextWindow;
         }
     }
 

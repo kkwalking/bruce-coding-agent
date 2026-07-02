@@ -13,6 +13,7 @@ public class BruceSettings {
     private WebSearchSettings webSearch = new WebSearchSettings();
     private EmbeddingSettings embedding = new EmbeddingSettings();
     private McpSettings mcp = new McpSettings();
+    private CompactionSettings compaction = new CompactionSettings();
     private Map<String, String> variables = new LinkedHashMap<>();
 
     public LlmSettings getLlm() {
@@ -57,6 +58,17 @@ public class BruceSettings {
 
     public void setMcp(McpSettings mcp) {
         this.mcp = mcp == null ? new McpSettings() : mcp;
+    }
+
+    public CompactionSettings getCompaction() {
+        if (compaction == null) {
+            compaction = new CompactionSettings();
+        }
+        return compaction;
+    }
+
+    public void setCompaction(CompactionSettings compaction) {
+        this.compaction = compaction == null ? new CompactionSettings() : compaction;
     }
 
     public Map<String, String> getVariables() {
@@ -306,6 +318,37 @@ public class BruceSettings {
 
         public void setServers(Map<String, McpServerSettings> servers) {
             this.servers = servers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(servers);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CompactionSettings {
+        private boolean enabled = true;
+        private int reserveTokens = 16_384;
+        private int keepRecentTokens = 20_000;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getReserveTokens() {
+            return reserveTokens;
+        }
+
+        public void setReserveTokens(int reserveTokens) {
+            this.reserveTokens = Math.max(0, reserveTokens);
+        }
+
+        public int getKeepRecentTokens() {
+            return keepRecentTokens;
+        }
+
+        public void setKeepRecentTokens(int keepRecentTokens) {
+            this.keepRecentTokens = Math.max(1, keepRecentTokens);
         }
     }
 

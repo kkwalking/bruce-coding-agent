@@ -164,6 +164,7 @@ class IntegratedCommandProcessorTest {
             String unknown = context.commands().handle("/does-not-exist").output();
             assertTrue(unknown.contains("/help"));
             assertTrue(context.commands().handle("/help").output().contains("/status"));
+            assertTrue(context.commands().handle("/help").output().contains("/compact"));
         }
     }
 

@@ -68,7 +68,8 @@ public class IntegratedMain {
                     ConcurrencyConfig.defaults(),
                     userHome,
                     renderer.stream(),
-                    mcpConfig
+                    mcpConfig,
+                    settings.getCompaction()
                 )) {
                     IntegratedCommandProcessor commands = new IntegratedCommandProcessor(
                         runtime,

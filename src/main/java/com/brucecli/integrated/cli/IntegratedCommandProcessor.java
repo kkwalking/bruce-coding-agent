@@ -153,6 +153,7 @@ public class IntegratedCommandProcessor {
             NewSession.class,
             Resume.class,
             Tree.class,
+            Compact.class,
             React.class,
             Plan.class,
             Model.class,
@@ -254,6 +255,8 @@ public class IntegratedCommandProcessor {
                   /new                   新建 session
                   /resume <id|path>      恢复指定 session
                   /tree [entryId]        查看或切换当前 session 树节点
+                  /compact [instructions]
+                                         压缩较早会话历史，保留摘要和最近上下文
                   /clear                 开启新 session，并清空临时对话和 HITL 本会话放行记录
                   /help
                   /exit
@@ -361,6 +364,18 @@ public class IntegratedCommandProcessor {
             }
             root.runtime.selectSessionLeaf(entryId);
             root.handled("已切换 active leaf。\n" + root.runtime.sessionTree());
+        }
+    }
+
+    @Command(name = "compact")
+    private static class Compact implements Runnable {
+        @ParentCommand SlashRoot root;
+        @Parameters(index = "0..*", arity = "0..*", description = "可选摘要聚焦指令")
+        private String[] instructions;
+
+        @Override
+        public void run() {
+            root.handled(root.runtime.compactSession(join(instructions == null ? new String[0] : instructions)));
         }
     }
 

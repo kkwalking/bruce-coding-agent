@@ -171,6 +171,63 @@ class SessionManagerTest {
     }
 
     @Test
+    void compactionEntryRebuildsContextFromSummaryAndKeptTail() throws Exception {
+        Path home = tempDir.resolve("home");
+        Path workspace = tempDir.resolve("workspace");
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
+
+        manager.appendMessage(Message.user("old user"));
+        manager.appendMessage(Message.assistant("old assistant"));
+        manager.appendMessage(Message.user("kept user"));
+        String firstKept = manager.activeLeafId();
+        manager.appendMessage(Message.assistant("kept assistant"));
+        manager.appendCompaction("旧历史摘要", firstKept, 123, Map.of(
+            "readFiles", List.of("README.md"),
+            "modifiedFiles", List.of("src/App.java")
+        ));
+        String sessionId = manager.currentSessionId();
+
+        List<String> context = manager.buildMessages().stream()
+            .map(Message::content)
+            .toList();
+        assertEquals(3, context.size());
+        assertTrue(context.get(0).contains("旧历史摘要"));
+        assertEquals(List.of("kept user", "kept assistant"), context.subList(1, context.size()));
+        assertTrue(manager.renderTree(AgentMode.REACT).contains("compaction 旧历史摘要"));
+        assertTrue(Files.readString(manager.currentFile()).contains("\"type\":\"compaction\""));
+
+        SessionManager reloaded = createNewAndResume(home, workspace, sessionId);
+        List<String> reloadedContext = reloaded.buildMessages().stream()
+            .map(Message::content)
+            .toList();
+        assertEquals(context, reloadedContext);
+    }
+
+    @Test
+    void latestCompactionWinsForRepeatedCompactions() throws Exception {
+        Path home = tempDir.resolve("home");
+        Path workspace = tempDir.resolve("workspace");
+        SessionManager manager = SessionManager.createNew(home, workspace, AgentMode.REACT);
+
+        manager.appendMessage(Message.user("old"));
+        manager.appendMessage(Message.user("first kept"));
+        String firstKept = manager.activeLeafId();
+        manager.appendCompaction("first summary", firstKept, 100, Map.of());
+        manager.appendMessage(Message.user("second kept"));
+        String secondKept = manager.activeLeafId();
+        manager.appendCompaction("second summary", secondKept, 80, Map.of());
+
+        List<String> context = manager.buildMessages().stream()
+            .map(Message::content)
+            .toList();
+
+        assertEquals(2, context.size());
+        assertTrue(context.get(0).contains("second summary"));
+        assertEquals("second kept", context.get(1));
+        assertFalse(context.stream().anyMatch(content -> content.contains("first summary")));
+    }
+
+    @Test
     void sessionEventRecorderPersistsOnlyDurableCompletedMessages() throws Exception {
         Path home = tempDir.resolve("home");
         Path workspace = tempDir.resolve("workspace");
