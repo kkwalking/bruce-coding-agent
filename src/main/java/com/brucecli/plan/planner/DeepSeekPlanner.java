@@ -50,6 +50,7 @@ public class DeepSeekPlanner implements Planner {
         3. 计划必须是 DAG，不能有环。
         4. 文件读取用 FILE_READ，文件写入用 FILE_WRITE，命令执行用 COMMAND，验证用 VERIFICATION。
         5. 如果用户要求创建、编译、运行项目，应给出完整步骤和依赖关系。
+        6. 精确修改既有文件时，优先规划为读取后生成完整 FILE_WRITE 内容；ReAct 模式下可使用 edit_file 做小范围修改。
         """;
 
     private final ChatClient chatClient;

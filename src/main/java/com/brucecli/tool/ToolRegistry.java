@@ -13,9 +13,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -54,7 +56,6 @@ public class ToolRegistry {
             // 按类别注册工具：文件、命令、代码项目创建。
             registerFileTools();
             registerShellTools();
-            registerCodeTools();
         }
     }
 
@@ -73,6 +74,62 @@ public class ToolRegistry {
 
     public List<String> getToolNames() {
         return List.copyOf(tools.keySet());
+    }
+
+    public String buildToolPrompt() {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("Available tools:\n");
+        List<String> visibleTools = tools.values().stream()
+            .filter(tool -> tool.promptSnippet() != null && !tool.promptSnippet().isBlank())
+            .map(tool -> "- " + tool.name() + ": " + tool.promptSnippet())
+            .toList();
+        if (visibleTools.isEmpty()) {
+            prompt.append("(none)\n");
+        } else {
+            prompt.append(String.join("\n", visibleTools)).append('\n');
+        }
+
+        Set<String> guidelines = new LinkedHashSet<>();
+        addDefaultGuidelines(guidelines);
+        tools.values().stream()
+            .flatMap(tool -> tool.promptGuidelines().stream())
+            .map(String::strip)
+            .filter(value -> !value.isBlank())
+            .forEach(guidelines::add);
+
+        if (!guidelines.isEmpty()) {
+            prompt.append("\nGuidelines:\n");
+            for (String guideline : guidelines) {
+                prompt.append("- ").append(guideline).append('\n');
+            }
+        }
+        return prompt.toString().strip();
+    }
+
+    private void addDefaultGuidelines(Set<String> guidelines) {
+        boolean hasExecuteCommand = tools.containsKey("execute_command");
+        boolean hasReadFile = tools.containsKey("read_file");
+        boolean hasEditFile = tools.containsKey("edit_file");
+        boolean hasWriteFile = tools.containsKey("write_file");
+        boolean hasFilesystemMcp = tools.keySet().stream()
+            .anyMatch(name -> name.startsWith("mcp__filesystem__"));
+
+        if (hasExecuteCommand) {
+            guidelines.add("本地目录浏览、文件发现和全文搜索优先使用 execute_command 运行 ls、rg --files、rg <pattern> 或 find。");
+            guidelines.add("构建、测试、Git 操作和脚本执行使用 execute_command。");
+        }
+        if (hasReadFile) {
+            guidelines.add("读取已知路径的单个文件用 read_file；大文件按返回提示继续使用 offset/limit 读取。");
+        }
+        if (hasEditFile) {
+            guidelines.add("小范围修改已有文件用 edit_file，old_text 必须精确且唯一匹配。");
+        }
+        if (hasWriteFile) {
+            guidelines.add("新建文件或完整覆盖文件用 write_file，不要用它做小范围修改。");
+        }
+        if (hasFilesystemMcp) {
+            guidelines.add("mcp__* 只在用户明确要求 MCP、内置工具无法满足，或需要该 MCP server 特有能力时使用。");
+        }
     }
 
     /**
@@ -120,18 +177,24 @@ public class ToolRegistry {
         // read_file: 让模型先观察已有文件内容，再决定如何修改。
         register(new Tool(
             "read_file",
-            "读取文件内容，用于查看代码、配置文件等",
-            createParameters(new Param("path", "string", "文件路径", true)),
+            "读取文件内容，用于查看代码、配置文件等；支持 offset/limit 按 1-based 行号分段读取大文件",
+            createParameters(
+                new Param("path", "string", "文件路径", true),
+                new Param("offset", "integer", "起始行号，1-based，可选", false),
+                new Param("limit", "integer", "最多读取行数，可选", false)
+            ),
             args -> {
                 Path path = resolveInsideWorkspace(args.get("path"));
-                return "文件内容:\n" + Files.readString(path, StandardCharsets.UTF_8);
-            }
+                return readFile(path, args);
+            },
+            "Read known file contents with optional offset/limit for large files",
+            List.of("Use read_file to examine known file paths instead of cat or sed.")
         ));
 
         // write_file: 写文件时自动创建父目录，方便模型一次完成新文件创建。
         register(new Tool(
             "write_file",
-            "写入文件内容，如果父目录不存在会自动创建",
+            "新建文件或完整覆盖文件内容，如果父目录不存在会自动创建；小范围修改已有文件应使用 edit_file",
             createParameters(
                 new Param("path", "string", "文件路径", true),
                 new Param("content", "string", "文件内容", true)
@@ -144,51 +207,173 @@ public class ToolRegistry {
                 }
                 Files.writeString(path, args.getOrDefault("content", ""), StandardCharsets.UTF_8);
                 return "文件已写入: " + workspaceRoot.relativize(path);
-            }
+            },
+            "Create new files or completely overwrite existing files",
+            List.of("Use write_file only for new files or complete rewrites.")
         ));
 
-        // list_dir: 给模型提供目录观察能力，避免它凭空猜测项目结构。
         register(new Tool(
-            "list_dir",
-            "列出目录内容",
-            createParameters(new Param("path", "string", "目录路径", false)),
-            args -> {
-                Path dir = resolveInsideWorkspace(args.getOrDefault("path", "."));
-                if (!Files.isDirectory(dir)) {
-                    return "不是目录: " + workspaceRoot.relativize(dir);
-                }
-                try (Stream<Path> stream = Files.list(dir)) {
-                    List<String> lines = stream
-                        .sorted(Comparator.comparing(path -> path.getFileName().toString()))
-                        .map(path -> (Files.isDirectory(path) ? "[D] " : "[F] ") + path.getFileName())
-                        .toList();
-                    return lines.isEmpty() ? "目录为空" : String.join("\n", lines);
-                }
-            }
+            "edit_file",
+            "精确修改已有文件中的一段文本；old_text 必须在原文件中唯一匹配，适合小范围修改",
+            createParameters(
+                new Param("path", "string", "文件路径", true),
+                new Param("old_text", "string", "要替换的原文，必须精确且唯一匹配", true),
+                new Param("new_text", "string", "替换后的文本", true)
+            ),
+            this::editFile,
+            "Make precise small edits by replacing one unique exact text block",
+            List.of(
+                "Use edit_file for precise changes to existing files.",
+                "The old_text argument must match exactly and uniquely; if it appears multiple times, read the file and choose a more specific block."
+            )
         ));
+
     }
 
     private void registerShellTools() {
-        // execute_command: 用于编译、运行测试等反馈闭环，是编程 Agent 的关键工具。
         register(new Tool(
             "execute_command",
-            "在工作目录内执行 Shell 命令，用于编译、运行、Git 操作等",
+            "在工作目录内执行 Shell 命令，用于 ls、rg、find、git、build、test、脚本运行等通用本地操作",
             createParameters(new Param("command", "string", "要执行的命令", true)),
-            args -> executeCommand(args.get("command"))
+            args -> executeCommand(args.get("command")),
+            "Execute shell commands for ls, rg, find, git, build, test, and scripts",
+            List.of("Use execute_command for local exploration commands such as rg --files, rg <pattern>, find, and ls.")
         ));
     }
 
-    private void registerCodeTools() {
-        // create_project: 示例工具，用来演示“一个工具内部可以封装多步文件操作”。
-        register(new Tool(
-            "create_project",
-            "创建一个基础 Java Maven 项目结构",
-            createParameters(
-                new Param("name", "string", "项目名称", true),
-                new Param("type", "string", "项目类型，目前支持 java", false)
-            ),
-            this::createProject
-        ));
+
+    private String readFile(Path path, Map<String, String> args) throws Exception {
+        String content = Files.readString(path, StandardCharsets.UTF_8);
+        Integer offset = parsePositiveInt(args.get("offset"), "offset");
+        Integer limit = parsePositiveInt(args.get("limit"), "limit");
+
+        if (offset == null && limit == null && content.length() <= OUTPUT_LIMIT) {
+            return "文件内容:\n" + content;
+        }
+
+        String[] lines = content.isEmpty() ? new String[0] : content.split("\\R", -1);
+        int totalLines = lines.length;
+        int startLine = offset == null ? 1 : offset;
+        if (startLine < 1) {
+            return "offset 必须大于等于 1";
+        }
+        if (limit != null && limit < 1) {
+            return "limit 必须大于等于 1";
+        }
+        if (totalLines == 0) {
+            if (startLine > 1) {
+                return "offset 超出文件末尾: offset=" + startLine + ", 文件总行数=0";
+            }
+            return "文件内容 (lines 0-0 of 0):\n";
+        }
+        if (startLine > totalLines) {
+            return "offset 超出文件末尾: offset=" + startLine + ", 文件总行数=" + totalLines;
+        }
+
+        int startIndex = startLine - 1;
+        int requestedEnd = limit == null
+            ? totalLines
+            : Math.min(totalLines, startIndex + limit);
+        StringBuilder selected = new StringBuilder();
+        int endIndex = startIndex;
+        boolean truncatedByChars = false;
+        boolean partialLine = false;
+        for (int i = startIndex; i < requestedEnd; i++) {
+            String next = (selected.length() == 0 ? "" : "\n") + lines[i];
+            if (selected.length() + next.length() > OUTPUT_LIMIT) {
+                if (selected.length() == 0) {
+                    selected.append(next, 0, Math.min(next.length(), OUTPUT_LIMIT));
+                    endIndex = i + 1;
+                    partialLine = true;
+                }
+                truncatedByChars = true;
+                break;
+            }
+            selected.append(next);
+            endIndex = i + 1;
+        }
+
+        int displayEndLine = Math.max(startLine, endIndex);
+        StringBuilder result = new StringBuilder();
+        result.append("文件内容 (lines ")
+            .append(startLine)
+            .append("-")
+            .append(displayEndLine)
+            .append(" of ")
+            .append(totalLines)
+            .append("):\n")
+            .append(selected);
+
+        if (partialLine) {
+            result.append("\n\n[Line ")
+                .append(displayEndLine)
+                .append(" exceeds ")
+                .append(OUTPUT_LIMIT)
+                .append(" char limit. Use execute_command with sed/head/tail to inspect this long line.]");
+        }
+
+        boolean hasMore = endIndex < totalLines;
+        if (hasMore) {
+            int nextOffset = endIndex + 1;
+            result.append("\n\n[Showing lines ")
+                .append(startLine)
+                .append("-")
+                .append(displayEndLine)
+                .append(" of ")
+                .append(totalLines);
+            if (truncatedByChars) {
+                result.append(" (").append(OUTPUT_LIMIT).append(" char limit)");
+            }
+            result.append(". Use offset=")
+                .append(nextOffset)
+                .append(" to continue.]");
+        }
+        return result.toString();
+    }
+
+    private String editFile(Map<String, String> args) throws Exception {
+        Path path = resolveInsideWorkspace(args.get("path"));
+        String oldText = args.get("old_text");
+        String newText = args.getOrDefault("new_text", "");
+        if (oldText == null || oldText.isEmpty()) {
+            return "edit_file 失败: old_text 不能为空，文件未修改";
+        }
+
+        String content = Files.readString(path, StandardCharsets.UTF_8);
+        int matches = countOccurrences(content, oldText);
+        if (matches == 0) {
+            return "edit_file 失败: old_text 未在文件中找到，文件未修改: " + workspaceRoot.relativize(path);
+        }
+        if (matches > 1) {
+            return "edit_file 失败: old_text 匹配多处 (" + matches + ")，请提供更精确的 old_text，文件未修改: "
+                + workspaceRoot.relativize(path);
+        }
+
+        String updated = content.replace(oldText, newText);
+        Files.writeString(path, updated, StandardCharsets.UTF_8);
+        return "文件已编辑: " + workspaceRoot.relativize(path)
+            + " (替换 1 处，" + oldText.length() + " -> " + newText.length() + " 字符)";
+    }
+
+    private int countOccurrences(String content, String needle) {
+        int count = 0;
+        int index = 0;
+        while ((index = content.indexOf(needle, index)) >= 0) {
+            count++;
+            index += needle.length();
+        }
+        return count;
+    }
+
+    private Integer parsePositiveInt(String raw, String name) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(raw.replace("\"", "").trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(name + " 必须是整数: " + raw);
+        }
     }
 
     private String executeCommand(String command) throws Exception {

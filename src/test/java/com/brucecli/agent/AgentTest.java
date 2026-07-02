@@ -157,6 +157,33 @@ class AgentTest {
         ));
     }
 
+    @Test
+    void systemPromptIncludesDynamicToolRoutingGuidelines() throws Exception {
+        RecordingChatClient chatClient = new RecordingChatClient(
+            new ChatResponse("完成。", List.of())
+        );
+        ToolRegistry toolRegistry = new ToolRegistry(tempDir);
+        Agent agent = new Agent(
+            chatClient,
+            toolRegistry,
+            "你可能会看到 mcp__filesystem__* 工具，但普通本地文件操作应优先使用内置工具。",
+            ToolCallExecutor.serial(toolRegistry)
+        );
+
+        agent.run("检查一下项目结构");
+
+        String systemPrompt = chatClient.calls.get(0).get(0).content();
+        assertTrue(systemPrompt.contains("Available tools:"));
+        assertTrue(systemPrompt.contains("read_file"));
+        assertTrue(systemPrompt.contains("execute_command"));
+        assertTrue(systemPrompt.contains("Guidelines:"));
+        assertTrue(systemPrompt.contains("rg --files"));
+        assertTrue(systemPrompt.contains("读取已知路径的单个文件用 read_file"));
+        assertTrue(systemPrompt.contains("小范围修改已有文件用 edit_file"));
+        assertTrue(systemPrompt.contains("新建文件或完整覆盖文件用 write_file"));
+        assertTrue(systemPrompt.contains("mcp__filesystem__*"));
+    }
+
     private static List<String> eventSequence(List<BruceEvent> events) {
         return events.stream()
             .map(AgentTest::eventLabel)

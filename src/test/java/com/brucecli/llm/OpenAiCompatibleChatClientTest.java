@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -162,6 +163,27 @@ class OpenAiCompatibleChatClientTest {
         }
     }
 
+    @Test
+    void omitsPromptOnlyToolMetadataFromOpenAiToolSchema() throws Exception {
+        TestClient client = new TestClient("http://127.0.0.1:1/chat/completions");
+        JsonNode parameters = mapper.createObjectNode().put("type", "object");
+        ToolDefinition tool = new ToolDefinition(
+            "read_file",
+            "读取文件",
+            parameters,
+            "Read file contents",
+            List.of("Use read_file for known paths.")
+        );
+
+        JsonNode request = client.requestBody(List.of(tool));
+        JsonNode function = request.path("tools").get(0).path("function");
+
+        assertEquals("read_file", function.path("name").asText());
+        assertTrue(function.has("parameters"));
+        assertFalse(function.has("promptSnippet"));
+        assertFalse(function.has("promptGuidelines"));
+    }
+
     private static String endpoint(HttpServer server) {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/chat/completions";
     }
@@ -174,6 +196,10 @@ class OpenAiCompatibleChatClientTest {
         @Override
         public String getProviderName() {
             return "test";
+        }
+
+        JsonNode requestBody(List<ToolDefinition> tools) {
+            return buildRequestBody(List.of(Message.user("hi")), tools, false);
         }
     }
 }

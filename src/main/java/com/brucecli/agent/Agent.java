@@ -39,19 +39,13 @@ public class Agent {
     private static final int MAX_RETRIES = 2;
 
     // System Prompt 相当于 Agent 的“操作手册”，它告诉模型有哪些工具、什么时候该用工具。
-    private static final String SYSTEM_PROMPT = """
-        你是一个智能编程助手，可以帮助用户完成各种任务。
+    private static final String BASE_SYSTEM_PROMPT = """
+        你是 Bruce Coding Agent，一个智能编程助手，可以帮助用户完成各种任务。
 
-        你可以使用以下工具来完成任务：
-        1. read_file - 读取文件内容
-        2. write_file - 写入文件内容
-        3. list_dir - 列出目录内容
-        4. execute_command - 执行 Shell 命令
-        5. create_project - 创建新项目结构
-
-        当需要操作文件、执行命令或创建项目时，请使用工具调用。
+        当需要观察文件、修改代码、执行命令或创建项目时，请使用工具调用。
         使用工具后，根据工具返回的结果继续思考下一步行动。
         如果任务已经完成，请直接给出最终答复，不要继续调用工具。
+        回答用户时保持简洁，并清晰标注相关文件路径。
 
         请用中文回复用户。
         """;
@@ -235,10 +229,11 @@ public class Agent {
     }
 
     private String appendSystemPrompt(String additionalSystemPrompt) {
+        String basePrompt = BASE_SYSTEM_PROMPT + "\n\n" + toolRegistry.buildToolPrompt();
         if (additionalSystemPrompt == null || additionalSystemPrompt.isBlank()) {
-            return SYSTEM_PROMPT;
+            return basePrompt;
         }
-        return SYSTEM_PROMPT + "\n" + additionalSystemPrompt.strip();
+        return basePrompt + "\n\n" + additionalSystemPrompt.strip();
     }
 
     private ChatClient.StreamListener streamListener(String runId) {
