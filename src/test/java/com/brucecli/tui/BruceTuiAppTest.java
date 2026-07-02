@@ -1,6 +1,14 @@
 package com.brucecli.tui;
 
+import com.brucecli.event.BruceEvents;
 import com.brucecli.integrated.cli.IntegratedCliTestSupport;
+import com.brucecli.llm.ChatClient;
+import com.brucecli.llm.ChatResponse;
+import com.brucecli.llm.FunctionCall;
+import com.brucecli.llm.Message;
+import com.brucecli.llm.ToolCall;
+import com.brucecli.llm.ToolDefinition;
+import com.brucecli.tool.ToolCallResult;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -12,9 +20,14 @@ import com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -155,6 +168,75 @@ class BruceTuiAppTest {
         }
     }
 
+    @Test
+    void toolLifecycleUpdatesSingleActivityLine() throws Exception {
+        QueueChatClient chatClient = new QueueChatClient(
+            new ChatResponse(
+                "",
+                List.of(toolCall("call-1", "write_file", "{\"path\":\"demo.txt\",\"content\":\"hello\"}"))
+            ),
+            new ChatResponse("文件已经写好。", List.of())
+        );
+        try (
+            IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(
+                tempDir,
+                new PrintStream(OutputStream.nullOutputStream()),
+                chatClient
+            );
+            TestScreen testScreen = testScreen();
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(testScreen.screen());
+            BruceTuiApp app = new BruceTuiApp(
+                testScreen.screen(),
+                renderer,
+                context.runtime(),
+                context.chatClient(),
+                input -> {
+                    var result = context.commands().handle(input);
+                    return new TuiCommandResult(result.handled(), result.exit(), result.output());
+                },
+                tempDir
+            )
+        ) {
+            assertEquals("文件已经写好。", context.runtime().run("写文件"));
+
+            List<String> messages = renderer.messageTexts();
+            assertTrue(messages.contains("* 工具调用: write_file (完成)"));
+            assertEquals(1, messages.stream().filter(message -> message.contains("工具调用: write_file")).count());
+            assertFalse(messages.stream().anyMatch(message -> message.contains("工具开始")));
+            assertFalse(messages.stream().anyMatch(message -> message.contains("工具完成")));
+        }
+    }
+
+    @Test
+    void failedToolLifecycleUpdatesSingleActivityLine() throws Exception {
+        try (
+            IntegratedCliTestSupport.TestContext context = IntegratedCliTestSupport.context(tempDir);
+            TestScreen testScreen = testScreen();
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(testScreen.screen());
+            BruceTuiApp app = new BruceTuiApp(
+                testScreen.screen(),
+                renderer,
+                context.runtime(),
+                context.chatClient(),
+                input -> {
+                    var result = context.commands().handle(input);
+                    return new TuiCommandResult(result.handled(), result.exit(), result.output());
+                },
+                tempDir
+            )
+        ) {
+            ToolCall toolCall = toolCall("call-failed", "read_file", "{\"path\":\"missing.txt\"}");
+
+            app.handleRuntimeEvent(new BruceEvents.ToolCallStarted("run-failed", toolCall));
+            app.handleRuntimeEvent(new BruceEvents.ToolCallCompleted(
+                "run-failed",
+                ToolCallResult.failed(toolCall, new IllegalStateException("boom"), 7)
+            ));
+
+            assertEquals(List.of("* 工具调用: read_file (失败)"), renderer.messageTexts());
+        }
+    }
+
     private static void waitForMessage(LanternaBruceRenderer renderer, String text) throws Exception {
         long deadline = System.currentTimeMillis() + 2_000;
         while (System.currentTimeMillis() < deadline) {
@@ -191,6 +273,10 @@ class BruceTuiAppTest {
         }
     }
 
+    private static ToolCall toolCall(String id, String name, String arguments) {
+        return new ToolCall(id, new FunctionCall(name, arguments));
+    }
+
     private static TestScreen testScreen() throws Exception {
         DefaultVirtualTerminal terminal = new DefaultVirtualTerminal(new TerminalSize(20, 8));
         TerminalScreen screen = new TerminalScreen(terminal);
@@ -201,6 +287,23 @@ class BruceTuiAppTest {
         @Override
         public void close() throws Exception {
             screen.close();
+        }
+    }
+
+    private static class QueueChatClient implements ChatClient {
+        private final Queue<ChatResponse> responses = new ArrayDeque<>();
+
+        QueueChatClient(ChatResponse... responses) {
+            this.responses.addAll(List.of(responses));
+        }
+
+        @Override
+        public ChatResponse chat(List<Message> messages, List<ToolDefinition> tools) throws IOException {
+            ChatResponse response = responses.poll();
+            if (response == null) {
+                throw new IOException("no queued response");
+            }
+            return response;
         }
     }
 }

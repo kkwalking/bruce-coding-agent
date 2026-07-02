@@ -18,7 +18,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -34,6 +36,7 @@ public class BruceTuiApp implements AutoCloseable {
     private final ChatClient chatClient;
     private final TuiCommandHandler commands;
     private final Path historyFile;
+    private final Map<String, Integer> toolActivityIndexes = new HashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "bruce-tui-worker");
         thread.setDaemon(true);
@@ -259,8 +262,9 @@ public class BruceTuiApp implements AutoCloseable {
         return value.equals("/index") || value.startsWith("/index ");
     }
 
-    private void handleRuntimeEvent(BruceEvent event) {
+    void handleRuntimeEvent(BruceEvent event) {
         if (event instanceof BruceEvents.RunStarted) {
+            toolActivityIndexes.clear();
             renderer.appendActivity("思考中...");
         } else if (event instanceof BruceEvents.MessageStarted started) {
             if ("assistant".equals(started.role())) {
@@ -273,9 +277,16 @@ public class BruceTuiApp implements AutoCloseable {
         } else if (event instanceof BruceEvents.MessageCompleted completed) {
             renderCompletedMessage(completed.message());
         } else if (event instanceof BruceEvents.ToolCallStarted started) {
-            renderer.appendActivity("工具开始: " + toolName(started.toolCall()));
+            int index = renderer.appendActivityAndReturnIndex(toolActivityText(started.toolCall(), "处理中"));
+            if (index >= 0) {
+                toolActivityIndexes.put(toolActivityKey(started.runId(), started.toolCall()), index);
+            }
         } else if (event instanceof BruceEvents.ToolCallCompleted completed) {
-            renderer.appendActivity(toolCompletedText(completed));
+            String text = toolActivityText(completed.toolCall(), toolCompletedStatus(completed.status()));
+            Integer index = toolActivityIndexes.remove(toolActivityKey(completed.runId(), completed.toolCall()));
+            if (index == null || !renderer.replaceActivity(index, text)) {
+                renderer.appendActivity(text);
+            }
         } else if (event instanceof BruceEvents.Activity activity) {
             renderer.appendActivity(activity.message());
         } else if (event instanceof BruceEvents.SessionChanged changed) {
@@ -322,10 +333,18 @@ public class BruceTuiApp implements AutoCloseable {
         }
     }
 
-    private String toolCompletedText(BruceEvents.ToolCallCompleted completed) {
-        ToolCallResult.Status status = completed.status();
-        String suffix = status == ToolCallResult.Status.SUCCESS ? "" : " " + status;
-        return "工具完成: " + toolName(completed.toolCall()) + suffix + " (" + completed.durationMillis() + "ms)";
+    private String toolActivityKey(String runId, ToolCall toolCall) {
+        String safeRunId = runId == null ? "" : runId;
+        String toolCallId = toolCall == null || toolCall.id() == null ? toolName(toolCall) : toolCall.id();
+        return safeRunId + ":" + toolCallId;
+    }
+
+    private String toolActivityText(ToolCall toolCall, String status) {
+        return "工具调用: " + toolName(toolCall) + " (" + status + ")";
+    }
+
+    private String toolCompletedStatus(ToolCallResult.Status status) {
+        return status == ToolCallResult.Status.SUCCESS ? "完成" : "失败";
     }
 
     private String toolName(ToolCall toolCall) {

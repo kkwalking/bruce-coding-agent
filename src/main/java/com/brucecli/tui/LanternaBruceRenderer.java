@@ -98,6 +98,14 @@ public class LanternaBruceRenderer implements BruceRenderer {
         append(MessageKind.ACTIVITY, "* " + nullToEmpty(message));
     }
 
+    int appendActivityAndReturnIndex(String message) {
+        return appendAndReturnIndex(MessageKind.ACTIVITY, "* " + nullToEmpty(message));
+    }
+
+    boolean replaceActivity(int index, String message) {
+        return replace(index, MessageKind.ACTIVITY, "* " + nullToEmpty(message));
+    }
+
     public void clearMessages() {
         if (closed) {
             return;
@@ -397,13 +405,37 @@ public class LanternaBruceRenderer implements BruceRenderer {
     }
 
     private void append(MessageKind kind, String text) {
+        appendAndReturnIndex(kind, text);
+    }
+
+    private int appendAndReturnIndex(MessageKind kind, String text) {
         if (closed || text == null || text.isBlank()) {
-            return;
+            return -1;
         }
         synchronized (lock) {
             messages.add(new TuiMessage(kind, text.strip()));
+            int index = messages.size() - 1;
+            markDirty();
+            return index;
+        }
+    }
+
+    private boolean replace(int index, MessageKind expectedKind, String text) {
+        if (closed || text == null || text.isBlank()) {
+            return false;
+        }
+        synchronized (lock) {
+            if (index < 0 || index >= messages.size()) {
+                return false;
+            }
+            TuiMessage existing = messages.get(index);
+            if (existing.kind() != expectedKind) {
+                return false;
+            }
+            messages.set(index, new TuiMessage(expectedKind, text.strip()));
         }
         markDirty();
+        return true;
     }
 
     private void drawMessages(TextGraphics graphics, int columns, int messageRows, int scrollOffset) {

@@ -182,7 +182,7 @@ public class Agent {
                     for (ToolCallResult toolResult : toolResults) {
                         ToolCall toolCall = toolResult.toolCall();
                         emit(new BruceEvents.ToolCallCompleted(runId, toolResult));
-                        logger.info(
+                        logger.debug(
                             "[Agent] 工具 {} 完成。",
                             toolCall.function().name()
                         );
