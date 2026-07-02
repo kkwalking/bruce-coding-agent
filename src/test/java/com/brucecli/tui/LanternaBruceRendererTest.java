@@ -115,10 +115,23 @@ class LanternaBruceRendererTest {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
 
             renderer.beginStreamingAssistantMessage();
-            renderer.appendActivity("工具开始: write_file");
+            renderer.appendActivity("工具调用: write_file (处理中)");
             renderer.finishStreamingAssistantMessage("");
 
-            assertEquals(List.of("* 工具开始: write_file"), renderer.messageTexts());
+            assertEquals(List.of("* 工具调用: write_file (处理中)"), renderer.messageTexts());
+        }
+    }
+
+    @Test
+    void activityLineCanBeReplacedInPlace() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            int index = renderer.appendActivityAndReturnIndex("工具调用: write_file (处理中)");
+            boolean replaced = renderer.replaceActivity(index, "工具调用: write_file (完成)");
+
+            assertTrue(replaced);
+            assertEquals(List.of("* 工具调用: write_file (完成)"), renderer.messageTexts());
         }
     }
 
