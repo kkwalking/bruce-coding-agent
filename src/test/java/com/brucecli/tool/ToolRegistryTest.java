@@ -130,17 +130,6 @@ class ToolRegistryTest {
         assertTrue(result.contains("路径超出工作目录"));
     }
 
-    @Test
-    void createsJavaProjectStructure() {
-        ToolRegistry registry = new ToolRegistry(tempDir);
-
-        // create_project 是一个复合工具：一次调用会创建 pom.xml 和标准源码目录。
-        String result = registry.executeTool("create_project", Map.of("name", "demo", "type", "java"));
-
-        assertTrue(result.contains("项目已创建"));
-        assertTrue(Files.exists(tempDir.resolve("demo/pom.xml")));
-        assertTrue(Files.exists(tempDir.resolve("demo/src/main/java/com/example/Hello.java")));
-    }
 
     @Test
     void executesShellCommandInWorkspace() {

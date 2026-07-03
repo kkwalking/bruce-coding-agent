@@ -9,8 +9,7 @@ public final class ApprovalPolicy {
     private static final Set<String> DANGEROUS_TOOLS = Set.of(
         "edit_file",
         "write_file",
-        "execute_command",
-        "create_project"
+        "execute_command"
     );
 
     private ApprovalPolicy() {
@@ -28,7 +27,6 @@ public final class ApprovalPolicy {
             case "execute_command" -> "🔴 高危";
             case "edit_file" -> "🟡 中危";
             case "write_file" -> "🟡 中危";
-            case "create_project" -> "🟡 中危";
             default -> "🟢 安全";
         };
     }
@@ -41,7 +39,6 @@ public final class ApprovalPolicy {
             case "execute_command" -> "将在系统上执行 Shell 命令，可能修改文件、安装软件或影响系统状态";
             case "edit_file" -> "将修改文件中的匹配文本";
             case "write_file" -> "将写入或覆盖文件内容，原有内容将丢失";
-            case "create_project" -> "将在磁盘上创建新目录和文件";
             default -> "安全的只读操作";
         };
     }

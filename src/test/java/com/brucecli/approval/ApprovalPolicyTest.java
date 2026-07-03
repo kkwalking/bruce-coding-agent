@@ -11,7 +11,6 @@ class ApprovalPolicyTest {
         assertTrue(ApprovalPolicy.requiresApproval("edit_file"));
         assertTrue(ApprovalPolicy.requiresApproval("write_file"));
         assertTrue(ApprovalPolicy.requiresApproval("execute_command"));
-        assertTrue(ApprovalPolicy.requiresApproval("create_project"));
         assertTrue(ApprovalPolicy.requiresApproval("mcp__filesystem__read_file"));
 
         assertFalse(ApprovalPolicy.requiresApproval("read_file"));
