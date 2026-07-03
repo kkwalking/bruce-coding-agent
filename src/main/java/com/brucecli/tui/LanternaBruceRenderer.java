@@ -25,9 +25,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 public class LanternaBruceRenderer implements BruceRenderer {
     private static final long INDEX_PROGRESS_RENDER_INTERVAL_NANOS = 100_000_000L;
+    private static final Pattern INTERNAL_LOG_LINE = Pattern.compile(
+        "^\\[[^\\]]+\\]\\s+(?:TRACE|DEBUG|INFO|WARN|ERROR)\\s+com\\.brucecli(?:\\.[\\w$]+)+\\s+-\\s+.*$"
+    );
     private static final TextColor.ANSI BASE = TextColor.ANSI.DEFAULT;
     private static final TextColor.ANSI DIM = TextColor.ANSI.WHITE;
     private static final TextColor.ANSI BRAND = TextColor.ANSI.YELLOW_BRIGHT;
@@ -873,7 +877,14 @@ public class LanternaBruceRenderer implements BruceRenderer {
             }
             String line = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
             buffer.reset();
+            if (isInternalLogLine(line)) {
+                return;
+            }
             appendActivity(line);
         }
+    }
+
+    private static boolean isInternalLogLine(String line) {
+        return line != null && INTERNAL_LOG_LINE.matcher(line).matches();
     }
 }

@@ -63,6 +63,32 @@ class LanternaBruceRendererTest {
     }
 
     @Test
+    void streamFiltersInternalBruceCliLogs() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.stream().print(
+                "[bruce-tui-worker] INFO com.brucecli.agent.Agent - [Agent] 开始任务: 当前集成runtime里面都使用了哪些组件"
+            );
+            renderer.stream().flush();
+
+            assertEquals(List.of(), renderer.messageTexts());
+        }
+    }
+
+    @Test
+    void streamKeepsExternalSlf4jLikeLogs() throws Exception {
+        try (TestScreen screen = testScreen()) {
+            LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
+
+            renderer.stream().print("[worker] INFO org.example.Tool - 正常工具输出");
+            renderer.stream().flush();
+
+            assertEquals(List.of("* [worker] INFO org.example.Tool - 正常工具输出"), renderer.messageTexts());
+        }
+    }
+
+    @Test
     void streamingAssistantDeltasProduceSingleFinalMessage() throws Exception {
         try (TestScreen screen = testScreen()) {
             LanternaBruceRenderer renderer = new LanternaBruceRenderer(screen.screen());
